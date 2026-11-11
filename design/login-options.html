@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>成长树 · 登录页四套方案</title>
+<style>
+  :root{
+    --page-bg:#f4f5f3;
+    --ink:#1d2420;
+    --sub:#6b756f;
+    --line:#e2e5e1;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(900px 500px at 12% -8%, #e8f3ec 0%, transparent 60%),
+      radial-gradient(800px 520px at 92% 4%, #f6efe4 0%, transparent 55%),
+      var(--page-bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:36px 28px 72px;
+  }
+
+  /* ── 页头 ─────────────────────────────────────── */
+  .head{max-width:1600px;margin:0 auto 30px;}
+  .head h1{
+    margin:0 0 10px;
+    font-size:26px;
+    font-weight:600;
+    letter-spacing:.02em;
+  }
+  .head p{
+    margin:0;
+    font-size:14px;
+    line-height:1.7;
+    color:var(--sub);
+    max-width:760px;
+  }
+  .head .tips{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    margin-top:14px;
+    padding:8px 14px;
+    border-radius:999px;
+    background:#fff;
+    border:1px solid var(--line);
+    font-size:12.5px;
+    color:#3d4a43;
+    box-shadow:0 4px 14px rgba(28,50,40,.05);
+  }
+  .head .tips b{color:#1f8a63;font-weight:600;}
+
+  /* ── 方案容器 ─────────────────────────────────── */
+  .grid{
+    max-width:1600px;
+    margin:0 auto;
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(375px,1fr));
+    gap:34px;
+    justify-items:center;
+  }
+  .card{width:100%;max-width:420px;}
+  .cap{
+    display:flex;
+    align-items:flex-start;
+    gap:12px;
+    margin-bottom:14px;
+    padding:0 4px;
+  }
+  .badge{
+    flex:none;
+    width:30px;height:30px;
+    border-radius:10px;
+    display:grid;place-items:center;
+    font-size:14px;font-weight:700;
+    color:#fff;
+    background:#2c3a33;
+    margin-top:2px;
+  }
+  .cap h3{
+    margin:0 0 4px;
+    font-size:16.5px;
+    font-weight:600;
+    letter-spacing:.01em;
+  }
+  .cap p{
+    margin:0;
+    font-size:12.5px;
+    line-height:1.65;
+    color:var(--sub);
+  }
+  .sw{display:flex;gap:6px;margin-left:auto;padding-top:6px;}
+  .sw i{
+    width:14px;height:14px;border-radius:50%;
+    display:block;
+    border:1px solid rgba(0,0,0,.06);
+  }
+
+  /* ── 手机框 ───────────────────────────────────── */
+  .phone{
+    width:375px;
+    height:790px;
+    margin:0 auto;
+    border-radius:44px;
+    padding:10px;
+    background:linear-gradient(160deg,#2b342e,#151b17);
+    box-shadow:
+      0 30px 60px -20px rgba(20,40,30,.35),
+      0 2px 0 rgba(255,255,255,.5) inset;
+    position:relative;
+  }
+  .phone::after{
+    content:"";
+    position:absolute;
+    top:20px;left:50%;
+    width:100px;height:22px;
+    transform:translateX(-50%);
+    border-radius:999px;
+    background:#0c110e;
+    opacity:.9;
+  }
+  .screen{
+    position:relative;
+    width:100%;height:100%;
+    border-radius:36px;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    isolation:isolate;
+  }
+
+  /* ── 主题变量 ─────────────────────────────────── */
+  .sA{
+    --bg:#eefaf2;
+    --glow1:rgba(88,206,155,.45);
+    --glow2:rgba(174,231,199,.55);
+    --ink:#123c2b;
+    --sub:#436b57;
+    --brand:linear-gradient(135deg,#1f7a55,#0f5c3f);
+    --primary-bg:linear-gradient(135deg,#2fbd8b,#178a63);
+    --primary-ink:#fff;
+    --primary-shadow:0 14px 30px -8px rgba(23,138,99,.55);
+    --ghost-bg:rgba(255,255,255,.72);
+    --ghost-line:rgba(31,138,99,.20);
+    --ghost-ink:#175c43;
+    --bubble-bg:rgba(255,255,255,.86);
+    --bubble-line:rgba(255,255,255,.95);
+    --bubble-ink:#2c5a46;
+    --foot:rgba(18,60,43,.5);
+    --mark:#1f8a63;
+  }
+  .sB{
+    --bg:#08150f;
+    --glow1:rgba(60,150,110,.30);
+    --glow2:rgba(212,175,110,.18);
+    --ink:#f2ead8;
+    --sub:#9db3a6;
+    --brand:linear-gradient(135deg,#f7e6bd,#c9a35c);
+    --primary-bg:linear-gradient(135deg,#f0d8a3,#c8a15a);
+    --primary-ink:#12211a;
+    --primary-shadow:0 14px 32px -10px rgba(201,163,92,.55);
+    --ghost-bg:rgba(255,255,255,.055);
+    --ghost-line:rgba(232,201,135,.26);
+    --ghost-ink:#efe0bd;
+    --bubble-bg:rgba(255,255,255,.075);
+    --bubble-line:rgba(232,201,135,.16);
+    --bubble-ink:#dfeee6;
+    --foot:rgba(240,232,214,.42);
+    --mark:#e3c68d;
+  }
+  .sC{
+    --bg:#fcfcfa;
+    --glow1:rgba(0,0,0,0);
+    --glow2:rgba(0,0,0,0);
+    --ink:#141a17;
+    --sub:#7c837e;
+    --brand:#141a17;
+    --primary-bg:#182620;
+    --primary-ink:#fff;
+    --primary-shadow:0 10px 24px -12px rgba(20,30,26,.55);
+    --ghost-bg:#fff;
+    --ghost-line:#e3e4e0;
+    --ghost-ink:#232a26;
+    --bubble-bg:#fff;
+    --bubble-line:#ebece8;
+    --bubble-ink:#5b625d;
+    --foot:#9aa19c;
+    --mark:#141a17;
+  }
+  .sD{
+    --bg:#fdf6ea;
+    --glow1:rgba(255,196,128,.55);
+    --glow2:rgba(255,222,180,.6);
+    --ink:#5f412c;
+    --sub:#96765a;
+    --brand:linear-gradient(135deg,#7a5236,#5a3b25);
+    --primary-bg:linear-gradient(135deg,#f2a75c,#e07f39);
+    --primary-ink:#fff;
+    --primary-shadow:0 14px 30px -10px rgba(224,127,57,.5);
+    --ghost-bg:rgba(255,253,248,.9);
+    --ghost-line:rgba(224,127,57,.24);
+    --ghost-ink:#8a5a33;
+    --bubble-bg:#fffaf3;
+    --bubble-line:#f2e2cc;
+    --bubble-ink:#7b5a3d;
+    --foot:rgba(95,65,44,.5);
+    --mark:#a06a3d;
+  }
+
+  .screen{background:var(--bg);color:var(--ink);}
+
+  /* ── 背景光斑 ─────────────────────────────────── */
+  .glow{position:absolute;inset:-15%;z-index:0;pointer-events:none;}
+  .glow::before,
+  .glow::after{
+    content:"";
+    position:absolute;
+    border-radius:50%;
+    filter:blur(46px);
+  }
+  .glow::before{
+    width:330px;height:330px;
+    background:var(--glow1);
+    top:-90px;left:-70px;
+    animation:breathe 13s ease-in-out infinite;
+  }
+  .glow::after{
+    width:300px;height:300px;
+    background:var(--glow2);
+    bottom:120px;right:-90px;
+    animation:breathe 17s ease-in-out infinite reverse;
+  }
+  @keyframes breathe{
+    0%,100%{transform:scale(1) translate3d(0,0,0);opacity:.85;}
+    50%{transform:scale(1.18) translate3d(14px,-10px,0);opacity:1;}
+  }
+
+  /* 深色方案的星点 */
+  .stars{
+    position:absolute;inset:0;z-index:0;opacity:0;pointer-events:none;
+    background-image:
+      radial-gradient(1.4px 1.4px at 22% 18%, rgba(255,255,255,.55), transparent),
+      radial-gradient(1.2px 1.2px at 72% 12%, rgba(255,255,255,.4), transparent),
+      radial-gradient(1.6px 1.6px at 46% 34%, rgba(255,255,255,.3), transparent),
+      radial-gradient(1.2px 1.2px at 86% 44%, rgba(255,255,255,.35), transparent),
+      radial-gradient(1.4px 1.4px at 12% 62%, rgba(255,255,255,.25), transparent);
+  }
+  .sB .stars{opacity:1;}
+
+  /* ── 品牌区 ───────────────────────────────────── */
+  .brand{
+    position:relative;
+    z-index:2;
+    padding:86px 34px 0;
+    text-align:center;
+  }
+  .mark{
+    width:64px;height:64px;
+    color:var(--mark);
+    display:block;
+    margin:0 auto 18px;
+  }
+  .sC .mark{width:56px;height:56px;}
+  .name{
+    margin:0;
+    font-size:33px;
+    line-height:1.15;
+    font-weight:600;
+    letter-spacing:.18em;
+    text-indent:.18em;
+    background:var(--brand);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+  }
+  .sC .name{
+    font-weight:400;
+    font-size:29px;
+    letter-spacing:.34em;
+    text-indent:.34em;
+  }
+  .sD .name{
+    font-family:"Kaiti SC","STKaiti","KaiTi",-apple-system,"PingFang SC",serif;
+    font-weight:600;
+  }
+  .slogan{
+    margin:12px 0 0;
+    font-size:13.5px;
+    letter-spacing:.22em;
+    text-indent:.22em;
+    color:var(--sub);
+    font-weight:400;
+  }
+  .sC .slogan{letter-spacing:.28em;text-indent:.28em;font-size:12.5px;}
+
+  /* ── 按钮组 ───────────────────────────────────── */
+  .acts{
+    position:relative;
+    z-index:2;
+    padding:44px 30px 0;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+  .btn{
+    -webkit-appearance:none;
+    appearance:none;
+    border:0;
+    width:100%;
+    display:flex;
+    align-items:center;
+    gap:13px;
+    padding:15px 16px;
+    border-radius:19px;
+    cursor:pointer;
+    font-family:inherit;
+    text-align:left;
+    transition:transform .18s cubic-bezier(.22,.9,.3,1),box-shadow .22s ease,filter .18s ease;
+    will-change:transform;
+  }
+  .sC .btn{border-radius:13px;padding:14px 15px;}
+  .btn .ic{
+    flex:none;
+    width:42px;height:42px;
+    border-radius:13px;
+    display:grid;place-items:center;
+    font-size:21px;
+    line-height:1;
+    background:rgba(255,255,255,.22);
+  }
+  .sC .btn .ic{background:#f2f3f0;border-radius:10px;}
+  .btn .tx{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .btn .tx b{
+    font-size:16px;
+    font-weight:600;
+    letter-spacing:.04em;
+    line-height:1.2;
+  }
+  .btn .tx i{
+    font-style:normal;
+    font-size:11.5px;
+    line-height:1.3;
+    opacity:.72;
+    letter-spacing:.02em;
+  }
+  .btn.primary{
+    background:var(--primary-bg);
+    color:var(--primary-ink);
+    box-shadow:var(--primary-shadow);
+  }
+  .btn.ghost{
+    background:var(--ghost-bg);
+    color:var(--ghost-ink);
+    border:1px solid var(--ghost-line);
+    box-shadow:0 6px 18px -14px rgba(20,40,32,.5);
+  }
+  /* 按压只作用于这一颗按钮：轻下沉 + 轻微收紧，页面其它区域完全不动 */
+  .btn:active{
+    transform:translateY(1px) scale(.985);
+    filter:brightness(.97);
+  }
+  .btn.primary:active{box-shadow:0 6px 16px -10px rgba(0,0,0,.4);}
+  .btn.press{
+    transform:translateY(1px) scale(.985);
+  }
+
+  /* ── 弹幕区 ───────────────────────────────────── */
+  .dm-wrap{
+    position:relative;
+    z-index:2;
+    flex:1;
+    min-height:0;
+    margin-top:26px;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-end;
+  }
+  .dm-hint{
+    padding:0 34px 8px;
+    font-size:10.5px;
+    letter-spacing:.16em;
+    color:var(--sub);
+    opacity:.75;
+  }
+  .danmu{
+    position:relative;
+    height:186px;
+    overflow:hidden;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%);
+    mask-image:linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%);
+  }
+  .bubble{
+    position:absolute;
+    left:100%;
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    padding:5px 12px 5px 5px;
+    border-radius:999px;
+    background:var(--bubble-bg);
+    border:1px solid var(--bubble-line);
+    color:var(--bubble-ink);
+    font-size:11.5px;
+    line-height:1.2;
+    white-space:nowrap;
+    box-shadow:0 4px 12px -6px rgba(20,40,32,.28);
+    animation-name:fly;
+    animation-timing-function:linear;
+    animation-iteration-count:infinite;
+    will-change:transform;
+    backdrop-filter:blur(6px);
+  }
+  .bubble .av{
+    flex:none;
+    width:22px;height:22px;
+    border-radius:50%;
+    display:grid;place-items:center;
+    font-size:12px;
+    line-height:1;
+  }
+  @keyframes fly{
+    from{transform:translate3d(0,0,0);}
+    to{transform:translate3d(calc(-100% - 400px),0,0);}
+  }
+
+  /* ── 页脚 ─────────────────────────────────────── */
+  .foot{
+    position:relative;
+    z-index:2;
+    padding:14px 34px 26px;
+    font-size:10px;
+    line-height:1.6;
+    text-align:center;
+    color:var(--foot);
+    letter-spacing:.02em;
+  }
+
+  /* ── 底部说明条 ───────────────────────────────── */
+  .notes{
+    max-width:1600px;
+    margin:46px auto 0;
+    padding:22px 24px;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:18px;
+    box-shadow:0 10px 30px -22px rgba(20,40,30,.35);
+  }
+  .notes h4{
+    margin:0 0 10px;
+    font-size:14px;
+    font-weight:600;
+  }
+  .notes ul{
+    margin:0;padding-left:18px;
+    font-size:12.5px;
+    line-height:1.85;
+    color:#4a554f;
+  }
+  .notes code{
+    background:#f1f3f0;
+    border-radius:5px;
+    padding:1px 5px;
+    font-size:11.5px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .glow::before,.glow::after,.bubble{animation:none!important;}
+    .bubble{left:14px;position:relative;margin-bottom:6px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>成长树 · 登录页改版 · 四套方案</h1>
+  <p>
+    每套都是 375×790 的真实手机尺寸。品牌名、slogan、两个入口按钮、底部弹幕（15 条评价循环飞过）都在真实位置，
+    弹幕速度与间距按可直接落地的参数调的。点按钮可以试按压手感。
+  </p>
+  <div class="tips">按压修复：按下时只有<b>这一颗按钮</b>轻下沉并收紧，页面其余部分完全不动（不再整页变暗）</div>
+</div>
+
+<div class="grid">
+
+  <!-- A ─────────────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">A</span>
+      <div>
+        <h3>晨光森林</h3>
+        <p>薄荷绿光斑缓慢呼吸，玻璃拟态按钮。最贴近产品「生长」的语义，家长孩子都不排斥。</p>
+      </div>
+      <span class="sw"><i style="background:#2fbd8b"></i><i style="background:#eefaf2"></i><i style="background:#123c2b"></i></span>
+    </div>
+    <div class="phone">
+      <div class="screen sA">
+        <div class="glow"></div>
+        <div class="brand">
+          <svg class="mark" viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="21" stroke="currentColor" stroke-opacity=".16" stroke-width="1.4"/>
+            <circle cx="24" cy="24" r="16" stroke="currentColor" stroke-opacity=".28" stroke-width="1.4"/>
+            <circle cx="24" cy="24" r="11" stroke="currentColor" stroke-opacity=".42" stroke-width="1.4"/>
+            <path d="M24 34V20" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+            <path d="M24 23.5c0-6 3.9-9 8.8-9 0 6-3.9 9-8.8 9Z" fill="currentColor" fill-opacity=".9"/>
+            <path d="M24 28.5c0-4.8-3.3-7.2-7.2-7.2 0 4.8 3.3 7.2 7.2 7.2Z" fill="currentColor" fill-opacity=".5"/>
+          </svg>
+          <h2 class="name">成长树</h2>
+          <p class="slogan">让成长，看得见</p>
+        </div>
+        <div class="acts">
+          <button class="btn primary">
+            <span class="ic">👨‍👩‍👧</span>
+            <span class="tx"><b>我是家长</b><i>管理任务 · 审核积分 · 看成长</i></span>
+          </button>
+          <button class="btn ghost">
+            <span class="ic">🧒</span>
+            <span class="tx"><b>我是孩子</b><i>完成任务 · 赚积分 · 换心愿</i></span>
+          </button>
+        </div>
+        <div class="dm-wrap">
+          <div class="dm-hint">他们这样说</div>
+          <div class="danmu" data-dm="A"></div>
+        </div>
+        <div class="foot">登录仅用微信身份标识认出你的账号<br/>不读取手机号、好友与聊天内容</div>
+      </div>
+    </div>
+  </article>
+
+  <!-- B ─────────────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">B</span>
+      <div>
+        <h3>静谧夜色</h3>
+        <p>墨绿近黑底 + 香槟金品牌字，磨砂金边按钮。最「贵」的一套，适合后续做付费档的视觉基调。</p>
+      </div>
+      <span class="sw"><i style="background:#c9a35c"></i><i style="background:#08150f"></i><i style="background:#f2ead8"></i></span>
+    </div>
+    <div class="phone">
+      <div class="screen sB">
+        <div class="stars"></div>
+        <div class="glow"></div>
+        <div class="brand">
+          <svg class="mark" viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="21" stroke="currentColor" stroke-opacity=".18" stroke-width="1.4"/>
+            <circle cx="24" cy="24" r="16" stroke="currentColor" stroke-opacity=".32" stroke-width="1.4"/>
+            <circle cx="24" cy="24" r="11" stroke="currentColor" stroke-opacity=".5" stroke-width="1.4"/>
+            <path d="M24 34V20" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+            <path d="M24 23.5c0-6 3.9-9 8.8-9 0 6-3.9 9-8.8 9Z" fill="currentColor" fill-opacity=".95"/>
+            <path d="M24 28.5c0-4.8-3.3-7.2-7.2-7.2 0 4.8 3.3 7.2 7.2 7.2Z" fill="currentColor" fill-opacity=".6"/>
+          </svg>
+          <h2 class="name">成长树</h2>
+          <p class="slogan">让成长，看得见</p>
+        </div>
+        <div class="acts">
+          <button class="btn primary">
+            <span class="ic">👨‍👩‍👧</span>
+            <span class="tx"><b>我是家长</b><i>管理任务 · 审核积分 · 看成长</i></span>
+          </button>
+          <button class="btn ghost">
+            <span class="ic">🧒</span>
+            <span class="tx"><b>我是孩子</b><i>完成任务 · 赚积分 · 换心愿</i></span>
+          </button>
+        </div>
+        <div class="dm-wrap">
+          <div class="dm-hint">他们这样说</div>
+          <div class="danmu" data-dm="B"></div>
+        </div>
+        <div class="foot">登录仅用微信身份标识认出你的账号<br/>不读取手机号、好友与聊天内容</div>
+      </div>
+    </div>
+  </article>
+
+  <!-- C ─────────────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">C</span>
+      <div>
+        <h3>留白雅致</h3>
+        <p>纯白大留白、细线年轮、墨绿实心按钮。最克制、最像工具类头部产品，信息密度低、加载最快。</p>
+      </div>
+      <span class="sw"><i style="background:#182620"></i><i style="background:#fcfcfa"></i><i style="background:#e3e4e0"></i></span>
+    </div>
+    <div class="phone">
+      <div class="screen sC">
+        <div class="glow"></div>
+        <div class="brand">
+          <svg class="mark" viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="21" stroke="currentColor" stroke-opacity=".14" stroke-width="1.2"/>
+            <circle cx="24" cy="24" r="16" stroke="currentColor" stroke-opacity=".2" stroke-width="1.2"/>
+            <circle cx="24" cy="24" r="11" stroke="currentColor" stroke-opacity=".28" stroke-width="1.2"/>
+            <path d="M24 34V20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M24 23.5c0-6 3.9-9 8.8-9 0 6-3.9 9-8.8 9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M24 28.5c0-4.8-3.3-7.2-7.2-7.2 0 4.8 3.3 7.2 7.2 7.2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+          <h2 class="name">成长树</h2>
+          <p class="slogan">让成长，看得见</p>
+        </div>
+        <div class="acts">
+          <button class="btn primary">
+            <span class="ic">👨‍👩‍👧</span>
+            <span class="tx"><b>我是家长</b><i>管理任务 · 审核积分 · 看成长</i></span>
+          </button>
+          <button class="btn ghost">
+            <span class="ic">🧒</span>
+            <span class="tx"><b>我是孩子</b><i>完成任务 · 赚积分 · 换心愿</i></span>
+          </button>
+        </div>
+        <div class="dm-wrap">
+          <div class="dm-hint">他们这样说</div>
+          <div class="danmu" data-dm="C"></div>
+        </div>
+        <div class="foot">登录仅用微信身份标识认出你的账号<br/>不读取手机号、好友与聊天内容</div>
+      </div>
+    </div>
+  </article>
+
+  <!-- D ─────────────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">D</span>
+      <div>
+        <h3>暖阳纸感</h3>
+        <p>奶油纸色 + 楷体品牌字 + 橘调按钮。最亲和、最像一本成长手账，孩子端会喜欢。</p>
+      </div>
+      <span class="sw"><i style="background:#e07f39"></i><i style="background:#fdf6ea"></i><i style="background:#5f412c"></i></span>
+    </div>
+    <div class="phone">
+      <div class="screen sD">
+        <div class="glow"></div>
+        <div class="brand">
+          <svg class="mark" viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="21" stroke="currentColor" stroke-opacity=".16" stroke-width="1.4"/>
+            <circle cx="24" cy="24" r="16" stroke="currentColor" stroke-opacity=".26" stroke-width="1.4"/>
+            <circle cx="24" cy="24" r="11" stroke="currentColor" stroke-opacity=".38" stroke-width="1.4"/>
+            <path d="M24 34V20" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+            <path d="M24 23.5c0-6 3.9-9 8.8-9 0 6-3.9 9-8.8 9Z" fill="currentColor" fill-opacity=".85"/>
+            <path d="M24 28.5c0-4.8-3.3-7.2-7.2-7.2 0 4.8 3.3 7.2 7.2 7.2Z" fill="currentColor" fill-opacity=".45"/>
+          </svg>
+          <h2 class="name">成长树</h2>
+          <p class="slogan">让成长，看得见</p>
+        </div>
+        <div class="acts">
+          <button class="btn primary">
+            <span class="ic">👨‍👩‍👧</span>
+            <span class="tx"><b>我是家长</b><i>管理任务 · 审核积分 · 看成长</i></span>
+          </button>
+          <button class="btn ghost">
+            <span class="ic">🧒</span>
+            <span class="tx"><b>我是孩子</b><i>完成任务 · 赚积分 · 换心愿</i></span>
+          </button>
+        </div>
+        <div class="dm-wrap">
+          <div class="dm-hint">他们这样说</div>
+          <div class="danmu" data-dm="D"></div>
+        </div>
+        <div class="foot">登录仅用微信身份标识认出你的账号<br/>不读取手机号、好友与聊天内容</div>
+      </div>
+    </div>
+  </article>
+
+</div>
+
+<div class="notes">
+  <h4>四套方案共用的实现约定</h4>
+  <ul>
+    <li><b>按压反馈</b>：每个按钮各自 <code>scale(.985)</code> + 1px 下沉 + 亮度略降，互不影响；不再有整页遮罩/变暗。</li>
+    <li><b>弹幕</b>：15 条评价按 4 条泳道循环，速度 13–21s 一条，左右两端渐隐淡出，不抢按钮的注意力。</li>
+    <li><b>头像</b>：正式版用真实家长/孩子头像（无头像时回落成彩色圆形 + 首字），预览里用 emoji 占位。</li>
+    <li><b>性能</b>：只用 transform/opacity 动画，关掉「减弱动态效果」时弹幕静止成一列静态评价。</li>
+  </ul>
+</div>
+
+<script>
+  const DANMU = [
+    { t: '种下一棵成长树，陪孩子慢慢长大', a: '👩', c: '#ffe1e8' },
+    { t: '用习惯扎下根，让时光长出叶', a: '👨', c: '#dfe9ff' },
+    { t: '打卡是根，日记是叶，成长自有年轮', a: '👩‍🦰', c: '#e2f7e6' },
+    { t: '每一分努力，都长成未来的模样', a: '🧑', c: '#fff1d6' },
+    { t: '点滴打卡，岁岁成林', a: '👵', c: '#f0e6ff' },
+    { t: '记录的不是数据，是孩子长大的痕迹', a: '👨‍🦱', c: '#e0f2f7' },
+    { t: '我陪他打卡，成长树替他收藏童年', a: '👩', c: '#ffe8f0' },
+    { t: '别让孩子的成长，只剩模糊的记忆', a: '👨', c: '#e6ecff' },
+    { t: '攒积分，换惊喜，长成大孩子！', a: '🧒', c: '#e8f8e4' },
+    { t: '今天的打卡，是明天的高度', a: '👦', c: '#fff0dd' },
+    { t: '我打卡，我长大！', a: '🧒', c: '#ffe3e9' },
+    { t: '我的成长树，我来浇水', a: '👧', c: '#e4f1ff' },
+    { t: '陪养好习惯，记录每一天', a: '👩', c: '#e9f6ee' },
+    { t: '好习惯，是可以被攒出来的', a: '👨', c: '#fdf0e0' },
+    { t: '把奖励交给规则，把成长留给孩子', a: '👨‍👩‍👦', c: '#eee7ff' }
+  ];
+
+  const LANES = 4;
+  const LANE_H = 46;
+
+  document.querySelectorAll('.danmu').forEach((box, boxIndex) => {
+    DANMU.forEach((m, i) => {
+      const el = document.createElement('div');
+      el.className = 'bubble';
+      const av = document.createElement('span');
+      av.className = 'av';
+      av.style.background = m.c;
+      av.textContent = m.a;
+      const tx = document.createElement('span');
+      tx.className = 'tx';
+      tx.textContent = m.t;
+      el.appendChild(av);
+      el.appendChild(tx);
+
+      el.style.top = (i % LANES) * LANE_H + 4 + 'px';
+      el.style.animationDuration = 13 + (i % 5) * 2 + 's';
+      el.style.animationDelay = -(i * 4.15 + boxIndex * 1.35) + 's';
+      box.appendChild(el);
+    });
+  });
+
+  // 让按压反馈在桌面/触屏上都稳定出现（部分浏览器 :active 需要一次点击才生效）
+  document.querySelectorAll('.btn').forEach((btn) => {
+    const on = () => btn.classList.add('press');
+    const off = () => btn.classList.remove('press');
+    btn.addEventListener('pointerdown', on);
+    btn.addEventListener('pointerup', off);
+    btn.addEventListener('pointerleave', off);
+    btn.addEventListener('pointercancel', off);
+  });
+</script>
+
+</body>
+</html>

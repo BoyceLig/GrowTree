@@ -1,0 +1,37 @@
+services:
+  growtree:
+    # ── 镜像版 ────────────────────────────────────────────────
+    # 默认直接用本地已构建好的镜像启动，不会再编译。
+    # 镜像缺失时（首次部署）才会走 build 现场构建。
+    # 切版本 / 回滚：PIGGY_VERSION=20261008 docker compose up -d
+    #               或 bash scripts/docker-up.sh 20261008
+    image: growtree:${PIGGY_VERSION:-latest}
+    build:
+      context: .
+      args:
+        VERSION: ${PIGGY_VERSION:-latest}
+    container_name: growtree
+    restart: unless-stopped
+    ports:
+      - "${PIGGY_PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - JWT_SECRET=${JWT_SECRET:-please-change-this-secret-in-production}
+      - PORT=3000
+      - DATA_DIR=/app/data
+      # 「今日积分」等按本地自然日统计，容器默认 UTC 会导致跨天错位
+      - TZ=Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

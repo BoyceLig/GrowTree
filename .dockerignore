@@ -1,0 +1,22 @@
+.git
+.gitignore
+node_modules
+**/node_modules
+server/dist
+# 真实数据与备份目录绝不进镜像
+data
+data-backup*
+# 前端只 COPY web/dist，源码不必进构建上下文
+web/src
+docs
+deploy
+release
+scripts
+*.md
+# 例外：「关于」页要读更新日志（server/src/routes/about.ts），必须让它进镜像
+!CHANGELOG.md
+*.tar.gz
+.DS_Store
+**/.DS_Store
+.env
+*.log

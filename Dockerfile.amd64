@@ -1,0 +1,85 @@
+FROM docker.1ms.run/library/node:20-alpine AS builder
+
+WORKDIR /app
+
+# better-sqlite3 是 native 模块，需要编译工具
+# apk 源换成中科大镜像：NAS 访问 dl-cdn.alpinelinux.org 极慢（实测 600s+），换源后几秒完成
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories \
+ && apk add --no-cache python3 make g++
+
+# 国内镜像加速（NAS 网络环境不佳时避免 Node headers 下载超时）
+# 用环境变量而非 npm config：node-gyp 认 NODEJS_ORG_MIRROR / npm_config_disturl，
+# 且环境变量不经过 npm 的配置项名校验（npm 10 会拒绝 disturl 等键名）
+ENV NODEJS_ORG_MIRROR=https://registry.npmmirror.com/-/binary/node \
+    npm_config_registry=https://registry.npmmirror.com \
+    npm_config_disturl=https://registry.npmmirror.com/-/binary/node \
+    npm_config_better_sqlite3_binary_host_mirror=https://registry.npmmirror.com/-/binary/better-sqlite3
+# ↑ better_sqlite3_binary_host_mirror：优先从 npmmirror 下载官方预编译二进制，
+#   命中后直接跳过本地编译（python3/make/g++ 仅作下载失败时的兜底）
+
+# 复制workspace根配置
+COPY package.json package-lock.json* ./
+COPY server/package.json ./server/
+COPY web/package.json ./web/
+
+# 安装依赖（包含devDependencies用于构建）
+RUN npm ci --no-audit --no-fund
+
+# 复制源码
+COPY server/ ./server/
+# 前端使用预构建的 dist，不在 Docker 内重新编译（避免环境差异导致 UI 不一致）
+COPY web/dist/ ./web/dist/
+
+# 只构建服务端
+RUN npm run build --workspace server
+
+# 清除 dev 依赖，只保留生产依赖（已编译的 native 模块会保留）
+RUN npm prune --omit=dev
+
+# 运行阶段
+FROM docker.1ms.run/library/node:20-alpine AS runtime
+
+# 版本号：由 scripts/docker-build.sh 传入（--build-arg VERSION=20261009）
+ARG VERSION=dev
+ARG BUILD_DATE=unknown
+LABEL org.opencontainers.image.title="growtree" \
+      org.opencontainers.image.description="成长树 - 家庭积分管理系统" \
+      org.opencontainers.image.version="$VERSION" \
+      org.opencontainers.image.created="$BUILD_DATE" \
+      org.opencontainers.image.source="local-build"
+
+WORKDIR /app
+
+# 直接复制 builder 阶段已编译好的生产依赖，不再重新 npm install
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/server/package.json ./server/package.json
+COPY --from=builder /app/web/package.json ./web/package.json
+
+# 复制构建产物
+COPY --from=builder /app/server/dist ./server/dist
+COPY --from=builder /app/web/dist ./web/dist
+
+# schema.sql 复制到源码目录（db/index.ts 优先从 cwd/server/src/db/schema.sql 加载）
+COPY server/src/db/schema.sql ./server/src/db/schema.sql
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV DATA_DIR=/app/data
+ENV PIGGY_VERSION=$VERSION
+# 容器内没有 tzdata 时 TZ 不生效，「今日」统计会按 UTC 天切分（比北京时间早 8 小时）
+RUN apk add --no-cache tzdata
+ENV TZ=Asia/Shanghai
+
+# 数据持久化目录
+RUN mkdir -p /app/data
+VOLUME /app/data
+
+EXPOSE 3000
+
+# 健康检查：node 20 自带 fetch，不需要再装 curl/wget。
+# 打根路径（静态首页）而非 /api，避免撞上鉴权钩子；返回 200 即认为服务正常。
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "server/dist/index.js"]

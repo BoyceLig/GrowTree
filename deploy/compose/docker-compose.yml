@@ -1,0 +1,62 @@
+services:
+  growtree:
+    # 成长树 GrowTree —— 直接使用云端现成镜像，无需源码、无需构建
+    # 首次执行：docker compose up -d
+    # 镜像 tag 必须保持 latest：升级功能靠比对 latest 的指纹来判断有没有新版
+    image: crpi-q6m49k4ufbvik9l5.cn-hangzhou.personal.cr.aliyuncs.com/wdcasc/growtree:latest
+    container_name: growtree
+    restart: unless-stopped
+    ports:
+      # 左边是宿主机端口，被占用就改成其它（如 3100:3000）
+      - "${GROWTREE_PORT:-3000}:3000"
+    volumes:
+      # 所有数据（数据库 + 上传的图片）都存这里，删了=数据全丢，注意备份
+      - ./data:/app/data
+    environment:
+      # 首次启动时创建管理员账号用的，数据库已有账号后不生效
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      # 登录令牌签名密钥，务必改成随机字符串
+      - JWT_SECRET=${JWT_SECRET:-please-change-this-secret}
+      - TZ=Asia/Shanghai
+      - DATA_DIR=/app/data
+      # ── 一键升级 ──────────────────────────────────────────────
+      # 告诉后端去哪个地址找升级服务；不填也能跑，只是「立即升级」按钮
+      # 会降级成"复制命令自己执行"
+      - WATCHTOWER_URL=http://watchtower:8080
+      - WATCHTOWER_TOKEN=${WATCHTOWER_TOKEN:-growtree-update-token}
+    labels:
+      # 打上这个标签，watchtower 才只盯着本容器，不碰你 NAS 上的其它服务
+      - com.centurylinklabs.watchtower.enable=true
+    depends_on:
+      - watchtower
+
+  watchtower:
+    # 升级执行器：收到 App 的指令后，拉新镜像并重建 growtree 容器。
+    # 用的是维护中的 nickfedor/watchtower（Apache-2.0），已搬运到同一个阿里云仓库，
+    # 国内网络可直接拉取。
+    image: crpi-q6m49k4ufbvik9l5.cn-hangzhou.personal.cr.aliyuncs.com/wdcasc/watchtower:1.23.0
+    container_name: growtree-watchtower
+    restart: unless-stopped
+    volumes:
+      # 必须挂载 docker 套接字才能操作容器，这是 watchtower 类工具的标准做法
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      # 只开启两个端点：update（触发升级）+ health（健康探针）
+      # 开启 HTTP API 后，watchtower 默认就**不再**定时自动检查更新，
+      # 完全由 App 里点「立即升级」驱动 —— 不会背着你偷偷升级
+      - WATCHTOWER_HTTP_API_ENDPOINTS=update,health
+      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_TOKEN:-growtree-update-token}
+      # 只监控带 watchtower.enable=true 标签的容器（即 growtree 自己）
+      - WATCHTOWER_LABEL_ENABLE=true
+      # 升级完成后顺手删掉旧镜像，NAS 磁盘不会越用越满
+      - WATCHTOWER_CLEANUP=true
+      - TZ=Asia/Shanghai
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # 升级到新版本：打开 App → 发现新版提示条 → 点「立即升级」
+  # 命令行升级（一键升级不可用时）：docker compose pull growtree && docker compose up -d growtree

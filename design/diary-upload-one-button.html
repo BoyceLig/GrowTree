@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>成长树 · 记日记 · 单个上传按钮 + 选择窗</title>
+<style>
+  :root{--page-bg:#f4f5f3;--ink:#1d2420;--sub:#6b756f;--line:#e2e5e1;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(900px 500px at 12% -8%, #e8f3ec 0%, transparent 60%),
+      var(--page-bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:36px 28px 72px;
+  }
+  .head{max-width:1640px;margin:0 auto 30px;}
+  .head h1{margin:0 0 10px;font-size:26px;font-weight:600;letter-spacing:.02em;}
+  .head p{margin:0;font-size:14px;line-height:1.7;color:var(--sub);max-width:900px;}
+  .head .tips{
+    display:inline-flex;align-items:center;gap:8px;margin-top:14px;padding:8px 14px;
+    border-radius:999px;background:#fff;border:1px solid var(--line);font-size:12.5px;color:#3d4a43;
+    box-shadow:0 4px 14px rgba(28,50,40,.05);
+  }
+  .head .tips b{color:#b4266a;font-weight:600;}
+
+  .grid{
+    max-width:1640px;margin:0 auto;
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));
+    gap:34px;justify-items:center;
+  }
+  .card{width:100%;max-width:400px;}
+  .cap{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;padding:0 4px;}
+  .badge{
+    flex:none;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;
+    font-size:14px;font-weight:700;color:#fff;background:#2c3a33;margin-top:2px;
+  }
+  .cap h3{margin:0 0 4px;font-size:16.5px;font-weight:600;}
+  .cap p{margin:0;font-size:12.5px;line-height:1.65;color:var(--sub);}
+
+  .phone{
+    width:375px;height:720px;margin:0 auto;border-radius:44px;padding:10px;
+    background:linear-gradient(160deg,#2b342e,#151b17);
+    box-shadow:0 30px 60px -20px rgba(20,40,30,.35),0 2px 0 rgba(255,255,255,.5) inset;
+    position:relative;
+  }
+  .phone::after{
+    content:"";position:absolute;top:20px;left:50%;width:100px;height:22px;
+    transform:translateX(-50%);border-radius:999px;background:#0c110e;opacity:.9;
+  }
+  .screen{
+    position:relative;width:100%;height:100%;border-radius:36px;overflow:hidden;
+    display:flex;flex-direction:column;isolation:isolate;color:#4a2437;
+    background:
+      radial-gradient(58% 34% at 14% 0%, rgba(255,196,214,.4) 0%, rgba(255,196,214,0) 70%),
+      linear-gradient(168deg,#fff5f7 0%,#fdeef2 52%,#f8e4ec 100%);
+  }
+  .dimbg{position:absolute;inset:0;background:rgba(60,30,45,.42);z-index:3;}
+
+  /* 页面头 + 编辑器底稿 */
+  .nav{
+    position:relative;z-index:1;height:56px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 16px;padding-top:26px;height:82px;
+  }
+  .nav .t{font-size:17px;font-weight:600;color:#4a2437;}
+  .nav .pill{display:flex;gap:8px;}
+  .nav .dot{width:34px;height:20px;border-radius:999px;background:rgba(255,255,255,.8);border:1px solid rgba(0,0,0,.06);}
+  .sheet{
+    position:absolute;left:0;right:0;bottom:0;z-index:2;
+    background:#fdf7f9;border-radius:24px 24px 0 0;padding:18px 16px 26px;
+  }
+  .sheet.grab::before{
+    content:"";display:block;width:40px;height:4px;border-radius:99px;
+    background:rgba(0,0,0,.14);margin:0 auto 12px;
+  }
+  .sheet h4{margin:0 0 2px;font-size:16.5px;font-weight:600;color:#3d1f30;}
+  .sheet .sub{margin:0 0 14px;font-size:11.5px;color:#a3798e;}
+  .f{margin-bottom:11px;}
+  .f .lb{font-size:12.5px;color:#6e4759;margin-bottom:5px;display:block;}
+  .f .box{
+    height:38px;border-radius:12px;background:#fff;border:1px solid #f0dbe3;
+    display:flex;align-items:center;padding:0 12px;font-size:12.5px;color:#b08b9c;
+  }
+  .f .box.ta{height:64px;align-items:flex-start;padding-top:9px;}
+
+  /* 单个上传按钮 */
+  .add1{
+    width:144rpx0;height:88px;width:88px;height:88px;border-radius:14px;
+    border:2px dashed rgba(230,120,60,.6);background:rgba(255,190,120,.14);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  }
+  .add1 .ic{font-size:22px;line-height:1;}
+  .add1 .tx{font-size:10.5px;line-height:1.25;color:#b05c1e;font-weight:600;text-align:center;}
+  .add1.dim{border-color:rgba(0,0,0,.14);background:rgba(0,0,0,.05);}
+  .add1.dim .tx{color:#b6a8af;font-weight:500;}
+  .add1 .lock{font-size:9.5px;color:#b6a8af;}
+
+  .thumbs{display:flex;gap:8px;flex-wrap:wrap;}
+  .th{position:relative;width:64px;height:64px;border-radius:10px;background:linear-gradient(135deg,#f7d9e3,#eec3d4);}
+  .th.v{display:flex;flex-direction:column;align-items:center;justify-content:center;background:#efe0e8;}
+  .th.v .ic{font-size:18px;}
+  .th.v .tx{font-size:9.5px;color:#977584;}
+  .th .x{
+    position:absolute;top:-7px;right:-7px;width:18px;height:18px;border-radius:50%;
+    background:rgba(0,0,0,.55);color:#fff;font-size:11px;display:grid;place-items:center;line-height:1;
+  }
+  .hintline{font-size:10px;color:#b08b9c;line-height:1.6;margin-top:8px;}
+  .foot{display:flex;gap:10px;margin-top:14px;}
+  .foot .b{flex:1;height:44px;border-radius:22px;display:grid;place-items:center;font-size:14px;font-weight:600;}
+  .foot .ghost{background:#fff;border:1px solid #eddbe2;color:#6e4759;}
+  .foot .go{background:linear-gradient(105deg,#f7a06a,#ef6d9c);color:#fff;}
+
+  /* 选择窗（点上传按钮后弹出） */
+  .picker{position:absolute;left:0;right:0;bottom:0;z-index:4;background:#fdf7f9;border-radius:24px 24px 0 0;padding:18px 16px 30px;}
+  .picker.grab::before{
+    content:"";display:block;width:40px;height:4px;border-radius:99px;
+    background:rgba(0,0,0,.14);margin:0 auto 12px;
+  }
+  .picker h4{margin:0 0 2px;font-size:16.5px;font-weight:600;color:#3d1f30;}
+  .picker .sub{margin:0 0 14px;font-size:11.5px;color:#a3798e;}
+  .opt{
+    display:flex;align-items:center;gap:13px;padding:14px;border-radius:16px;
+    background:#fff;border:1px solid #f0dbe3;margin-bottom:10px;
+  }
+  .opt .oic{flex:none;width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-size:22px;background:rgba(255,190,120,.18);}
+  .opt .ot{flex:1;min-width:0;}
+  .opt .ot b{display:block;font-size:14.5px;font-weight:600;color:#3d1f30;}
+  .opt .ot i{display:block;font-style:normal;font-size:11px;color:#a3798e;margin-top:2px;}
+  .opt .arr{font-size:16px;color:#c9a4b4;}
+  .opt.dim{opacity:.42;}
+  .opt.dim .ot b{color:#8d7a83;}
+  .opt .why{font-size:10px;color:#b4266a;background:#fbeaf0;border-radius:8px;padding:3px 8px;margin-top:4px;display:inline-block;}
+  .cancel{height:44px;border-radius:22px;background:#fff;border:1px solid #eddbe2;display:grid;place-items:center;font-size:14px;font-weight:600;color:#6e4759;margin-top:4px;}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>记日记 · 一个上传按钮 + 选择窗</h1>
+  <p>
+    编辑器里只有<b>一块「＋ 添加」按钮</b>。点它先弹一个小选择窗二选一：
+    选「照片」进可连选的相册（补到 9 张为止）；选「视频」进的相册<b>最多只能选 1 个</b> ——
+    是系统相册页本身只给选 1 个，从根上杜绝「连选 9 个视频」。
+  </p>
+  <div class="tips">变暗 ≠ 点不动：<b>点了会弹一句说明</b>，告诉用户为什么现在选不了</div>
+</div>
+
+<div class="grid">
+
+  <!-- A ───────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">A</span>
+      <div>
+        <h3>编辑器 · 什么都没选</h3>
+        <p>一块上传按钮，照片 0/9。点它弹出选择窗。</p>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="nav"><span class="t">成长</span><span class="pill"><span class="dot"></span><span class="dot"></span></span></div>
+        <div class="sheet grab">
+          <h4>写一篇</h4>
+          <p class="sub">写给 小明的，同一天可以写多篇</p>
+          <div class="f"><span class="lb">发生日期</span><div class="box">2026-10-20</div></div>
+          <div class="f"><span class="lb">标题（可不填）</span><div class="box">如：第一次自己骑车</div></div>
+          <div class="f"><span class="lb">正文</span><div class="box ta">今天发生了什么？</div></div>
+          <div class="f">
+            <span class="lb">照片或视频</span>
+            <div class="thumbs">
+              <div class="add1"><span class="ic">＋</span><span class="tx">添加<br>照片 / 视频</span></div>
+            </div>
+            <p class="hintline">照片最多 9 张、视频最多 1 个（≤20MB、60 秒内），两者不能混放，计入家庭存储空间</p>
+          </div>
+          <div class="foot"><div class="b ghost">取消</div><div class="b go">保存</div></div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- B ───────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">B</span>
+      <div>
+        <h3>点上传按钮后 · 选择窗（都亮）</h3>
+        <p>什么都没选时两个选项都能点，点谁进谁的相册。</p>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="nav"><span class="t">成长</span><span class="pill"><span class="dot"></span><span class="dot"></span></span></div>
+        <div class="sheet grab">
+          <h4>写一篇</h4>
+          <p class="sub">写给 小明的，同一天可以写多篇</p>
+          <div class="f"><span class="lb">发生日期</span><div class="box">2026-10-20</div></div>
+          <div class="f"><span class="lb">正文</span><div class="box ta">今天发生了什么？</div></div>
+          <div class="f">
+            <span class="lb">照片或视频</span>
+            <div class="thumbs"><div class="add1"><span class="ic">＋</span><span class="tx">添加<br>照片 / 视频</span></div></div>
+          </div>
+          <div class="foot"><div class="b ghost">取消</div><div class="b go">保存</div></div>
+        </div>
+        <div class="dimbg"></div>
+        <div class="picker grab">
+          <h4>添加照片或视频</h4>
+          <p class="sub">一篇日记里两者只能选一样</p>
+          <div class="opt">
+            <div class="oic">🖼</div>
+            <div class="ot"><b>照片</b><i>可连选，最多 9 张（≤6MB）</i></div>
+            <div class="arr">›</div>
+          </div>
+          <div class="opt">
+            <div class="oic">🎬</div>
+            <div class="ot"><b>视频</b><i>只能选 1 个（≤20MB、60 秒内）</i></div>
+            <div class="arr">›</div>
+          </div>
+          <div class="cancel">取消</div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- C ───────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">C</span>
+      <div>
+        <h3>已有 3 张照片 · 再点上传</h3>
+        <p>选择窗里「视频」变暗（附一句为什么）；「照片」照常亮，补到 9 张为止。</p>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="nav"><span class="t">成长</span><span class="pill"><span class="dot"></span><span class="dot"></span></span></div>
+        <div class="sheet grab">
+          <h4>写一篇</h4>
+          <p class="sub">写给 小明的，同一天可以写多篇</p>
+          <div class="f"><span class="lb">正文</span><div class="box ta">今天去了动物园……</div></div>
+          <div class="f">
+            <span class="lb">照片（3/9）</span>
+            <div class="thumbs">
+              <div class="th"><span class="x">×</span></div>
+              <div class="th"><span class="x">×</span></div>
+              <div class="th"><span class="x">×</span></div>
+              <div class="add1"><span class="ic">＋</span><span class="tx">添加<br>照片 / 视频</span></div>
+            </div>
+          </div>
+          <div class="foot"><div class="b ghost">取消</div><div class="b go">保存</div></div>
+        </div>
+        <div class="dimbg"></div>
+        <div class="picker grab">
+          <h4>添加照片或视频</h4>
+          <p class="sub">这篇已经放了照片</p>
+          <div class="opt">
+            <div class="oic">🖼</div>
+            <div class="ot"><b>照片</b><i>还可再加 6 张</i></div>
+            <div class="arr">›</div>
+          </div>
+          <div class="opt dim">
+            <div class="oic">🎬</div>
+            <div class="ot"><b>视频</b><i>照片和视频不能混放</i></div>
+            <div class="arr">›</div>
+          </div>
+          <div class="cancel">取消</div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- D ───────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">D</span>
+      <div>
+        <h3>已选了视频 · 两边都变暗</h3>
+        <p>编辑器里上传按钮整个变暗；再点弹出的选择窗两个选项也都暗，各带一句说明。想换视频先删掉它。</p>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="nav"><span class="t">成长</span><span class="pill"><span class="dot"></span><span class="dot"></span></span></div>
+        <div class="sheet grab">
+          <h4>写一篇</h4>
+          <p class="sub">写给 小明的，同一天可以写多篇</p>
+          <div class="f"><span class="lb">正文</span><div class="box ta">第一次骑两轮车没扶！</div></div>
+          <div class="f">
+            <span class="lb">视频（1/1）</span>
+            <div class="thumbs">
+              <div class="th v"><span class="x">×</span><span class="ic">🎬</span><span class="tx">00:42</span></div>
+              <div class="add1 dim"><span class="ic">＋</span><span class="tx">添加<br>照片 / 视频</span><span class="lock">已有视频</span></div>
+            </div>
+          </div>
+          <div class="foot"><div class="b ghost">取消</div><div class="b go">保存</div></div>
+        </div>
+        <div class="dimbg"></div>
+        <div class="picker grab">
+          <h4>添加照片或视频</h4>
+          <p class="sub">这篇已经放了视频</p>
+          <div class="opt dim">
+            <div class="oic">🖼</div>
+            <div class="ot"><b>照片</b><i>一篇日记只能放 1 个视频</i></div>
+            <div class="arr">›</div>
+          </div>
+          <div class="opt dim">
+            <div class="oic">🎬</div>
+            <div class="ot"><b>视频</b><i>想换请先删掉原来的视频</i></div>
+            <div class="arr">›</div>
+          </div>
+          <div class="cancel">取消</div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- E ───────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">E</span>
+      <div>
+        <h3>照片选满 9 张</h3>
+        <p>按钮变暗；再点弹出的选择窗里「照片」也暗（还可改成点了直接弹提示），「视频」因不能混放本来就暗。</p>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="nav"><span class="t">成长</span><span class="pill"><span class="dot"></span><span class="dot"></span></span></div>
+        <div class="sheet grab">
+          <h4>写一篇</h4>
+          <p class="sub">写给 小明的，同一天可以写多篇</p>
+          <div class="f">
+            <span class="lb">照片（9/9）</span>
+            <div class="thumbs">
+              <div class="th"><span class="x">×</span></div>
+              <div class="th"><span class="x">×</span></div>
+              <div class="th"><span class="x">×</span></div>
+              <div class="th"><span class="x">×</span></div>
+              <div class="th"><span class="x">×</span></div>
+              <div class="th"><span class="x">×</span></div>
+              <div class="th"><span class="x">×</span></div>
+              <div class="th"><span class="x">×</span></div>
+              <div class="th"><span class="x">×</span></div>
+              <div class="add1 dim"><span class="ic">＋</span><span class="tx">添加<br>照片 / 视频</span><span class="lock">已满 9 张</span></div>
+            </div>
+          </div>
+          <div class="foot"><div class="b ghost">取消</div><div class="b go">保存</div></div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+</div>
+
+<div class="notes" style="max-width:1640px;margin:44px auto 0;padding:22px 24px;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 30px -22px rgba(20,40,30,.35);">
+  <h4 style="margin:0 0 10px;font-size:14px;font-weight:600;">实现要点（确认后照这个做）</h4>
+  <ul style="margin:0;padding-left:18px;font-size:12.5px;line-height:1.85;color:#4a554f;">
+    <li>编辑器里一块按钮；点击弹「添加照片或视频」半屏选择窗（和「记一笔」同款底部弹窗，不是系统菜单）。</li>
+    <li>选「照片」→ 相册只收照片、可连选（每次最多补到 9 张）；选「视频」→ 相册<b>只收视频且最多 1 个</b>，选了 1 个系统页面里第二个就点不动。</li>
+    <li>变暗只是半透明 + 附一句原因；点了会弹说明 toast，不会没反应。</li>
+    <li>删掉已选附件（×），按钮和选项立刻恢复；编辑老日记走同一套规则。</li>
+    <li>按钮上的小灰字（「已有视频」「已满 9 张」）是设计稿示意，真机上也可以不放，你定。</li>
+  </ul>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,57 @@
+GrowTree（成长树）— 版权与署名说明
+=====================================
+
+1. 本项目当前版本以 BSL 1.1（Business Source License 1.1）发布，
+   许可条款见同目录 LICENSE 文件。版权所有 (c) 2026 风雨潇潇。
+
+2. 上游项目致谢（MIT 声明，依许可证要求保留）
+
+   本项目基于 piggy-bank（存钱罐）项目修改而来：
+   https://github.com/ASH-C776/piggy-bank （作者：基耶杰）
+
+   该上游代码采用 MIT License 发布，原始声明如下：
+
+   ------------------------------------------------------------------
+   MIT License
+
+   Copyright (c) 2026 基耶杰
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+   ------------------------------------------------------------------
+
+3. 字体与第三方依赖
+
+   · 前端自托管字体（zcool-kuaile / quicksand）的来源与许可证
+     见 scripts/build-fonts.sh 内注释。
+   · 其余依赖的许可证以各依赖仓库声明为准（可用
+     `npx license-checker` 自查）。
+
+4. 升级执行器 Watchtower（随镜像仓库一并分发，原样未修改）
+
+   「一键升级」功能依赖 Watchtower 完成拉取新镜像与重建容器。
+   因其官方镜像托管在 Docker Hub（国内网络无法直接拉取），本项目将
+   官方镜像原样搬运到自有镜像仓库 `wdcasc/watchtower` 供用户拉取。
+
+   项目：Watchtower（维护分支）
+   https://github.com/nicholas-fedor/watchtower
+   Docker 镜像：nickfedor/watchtower:1.23.0
+   许可：Apache License 2.0
+
+   说明：此处仅为**原样再分发**（未修改任何二进制或源码），
+   不改变其许可条款；本项目的 BSL 1.1 许可**不覆盖** Watchtower。

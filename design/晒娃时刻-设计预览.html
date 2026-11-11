@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>晒娃时刻 · 设计预览（每板块 3 样式）</title>
+<style>
+  :root{
+    --bg:#fff5f3;
+    --bg2:#fdeef0;
+    --ink:#3a2f33;
+    --muted:#9a8a90;
+    --primary:#ff7a9a;
+    --primary-deep:#f25c83;
+    --primary-soft:#ffe3ea;
+    --accent:#ffd166;
+    --card:#ffffff;
+    --line:rgba(255,122,154,.18);
+    --shadow:0 10px 30px rgba(242,92,131,.12);
+    --r:22px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:linear-gradient(160deg,var(--bg),var(--bg2));
+    color:var(--ink);
+    padding:36px 20px 80px;
+    line-height:1.5;
+  }
+  .top{max-width:1180px;margin:0 auto 10px}
+  h1{font-size:26px;letter-spacing:1px}
+  h1 .em{color:var(--primary-deep)}
+  .sub{color:var(--muted);margin-top:6px;font-size:14px}
+  .note{
+    max-width:1180px;margin:18px auto;background:#fff;border:1px dashed var(--line);
+    border-radius:16px;padding:14px 18px;font-size:13.5px;color:#7a6a70;
+  }
+  .note b{color:var(--primary-deep)}
+  section{max-width:1180px;margin:34px auto 0}
+  .sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+  .sec-head .no{
+    background:var(--primary);color:#fff;font-size:14px;font-weight:700;
+    width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;
+  }
+  .sec-head h2{font-size:20px}
+  .sec-head .req{color:var(--muted);font-size:13px}
+  .row{display:flex;gap:22px;flex-wrap:wrap;margin-top:14px}
+  .phone-wrap{flex:1 1 320px;min-width:300px;max-width:360px}
+  .phone-label{
+    font-size:13px;font-weight:700;color:var(--primary-deep);margin-bottom:8px;
+    display:flex;align-items:center;gap:6px;
+  }
+  .phone-label .tag{
+    background:var(--primary-soft);color:var(--primary-deep);font-size:11px;font-weight:600;
+    padding:2px 8px;border-radius:999px;
+  }
+  .phone{
+    background:#000;border-radius:38px;padding:12px;box-shadow:var(--shadow);
+    width:100%;
+  }
+  .screen{
+    background:linear-gradient(180deg,#fff7f5,#fff);
+    border-radius:28px;overflow:hidden;height:600px;position:relative;
+    display:flex;flex-direction:column;
+  }
+  .statusbar{display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;font-size:11px;color:#b0a3a8}
+  .statusbar .dots{display:flex;gap:4px}
+  .statusbar .dots i{width:5px;height:5px;border-radius:50%;background:#c9bcc1;display:block}
+  .page-title{padding:6px 18px 4px;font-size:18px;font-weight:800;color:var(--ink)}
+  .page-title small{display:block;font-size:11px;font-weight:500;color:var(--muted);margin-top:2px}
+  .content{flex:1;overflow:auto;padding:8px 14px 16px}
+  .content::-webkit-scrollbar{display:none}
+
+  /* ===== 通用组件 ===== */
+  .pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600}
+  .card{background:var(--card);border-radius:var(--r);box-shadow:0 6px 16px rgba(242,92,131,.08);padding:14px}
+  .muted{color:var(--muted)}
+  .stat-num{font-size:26px;font-weight:800;color:var(--primary-deep);line-height:1}
+  .stat-label{font-size:11px;color:var(--muted);margin-top:4px}
+  .av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;font-size:15px;flex:0 0 auto}
+  .av.sm{width:30px;height:30px;font-size:12px}
+  .ring{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:var(--primary-deep);font-size:15px;flex:0 0 auto}
+  .bar{height:8px;border-radius:999px;background:var(--primary-soft);overflow:hidden}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--primary),var(--primary-deep));border-radius:999px}
+
+  /* ===== 样式差异：孩子切换区 ===== */
+  /* A 横滑头像胶囊 */
+  .swipe-a{display:flex;gap:10px;overflow-x:auto;padding:6px 2px 10px}
+  .swipe-a .chip{display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid var(--line);border-radius:999px;padding:5px 12px 5px 5px;flex:0 0 auto}
+  .swipe-a .chip.on{background:var(--primary-soft);border-color:var(--primary)}
+  /* B 大卡片横滑 */
+  .swipe-b{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 12px}
+  .swipe-b .big{flex:0 0 150px;background:#fff;border-radius:18px;padding:10px;border:1.5px solid var(--line);text-align:center}
+  .swipe-b .big.on{border-color:var(--primary);box-shadow:0 6px 16px rgba(242,92,131,.16);transform:translateY(-2px)}
+  /* C 分段控件 */
+  .seg{display:flex;background:#fff;border:1.5px solid var(--line);border-radius:999px;padding:4px;margin:6px 2px 12px}
+  .seg > div{flex:1;text-align:center;font-size:12.5px;font-weight:700;padding:7px 0;border-radius:999px;color:var(--muted)}
+  .seg > div.on{background:var(--primary);color:#fff}
+
+  /* ===== 通用：榜单 / 日记 ===== */
+  .rank{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #f3e7ea}
+  .rank:last-child{border-bottom:0}
+  .rank .idx{width:22px;height:22px;border-radius:50%;background:var(--primary-soft);color:var(--primary-deep);font-weight:800;font-size:12px;display:grid;place-items:center;flex:0 0 auto}
+  .rank .idx.g{background:linear-gradient(135deg,#ffd166,#ff9f43);color:#fff}
+  .rank .nm{flex:1;font-size:13px;font-weight:600}
+  .rank .ct{font-size:12px;color:var(--muted)}
+  .diary{background:#fffaf2;border:1px solid #ffe6c2;border-radius:16px;padding:12px;font-size:12.5px;color:#8a7257}
+  .diary .h{font-weight:700;color:#c98a3a;font-size:12px;margin-bottom:4px}
+  .section-title{font-size:13px;font-weight:800;color:var(--ink);margin:16px 2px 8px;display:flex;align-items:center;gap:6px}
+  .section-title::before{content:"";width:4px;height:14px;border-radius:2px;background:var(--primary)}
+
+  .foot{position:absolute;left:0;right:0;bottom:0;padding:10px 14px;background:linear-gradient(180deg,rgba(255,255,255,0),#fff 40%)}
+  .save-btn{background:linear-gradient(90deg,var(--primary),var(--primary-deep));color:#fff;font-weight:700;font-size:14px;text-align:center;padding:12px;border-radius:16px;box-shadow:0 8px 18px rgba(242,92,131,.35)}
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>🌟 晒娃时刻 · <span class="em">设计预览</span></h1>
+    <div class="sub">每个板块提供 3 个样式方案，请逐块挑选，确认后再进入实现。下方手机框为模拟真机效果。</div>
+  </div>
+
+  <div class="note">
+    ⚠️ <b>一处待确认（笔误？）</b>：您写「每月收获」的采集数据里写的是「<b>本周完成任务数</b>」，但板块名是「每月收获」，推测应为「<b>本月完成任务数</b>」。下方预览我按「<b>本月完成任务数</b>」实现，若确为本周请告诉我。<br>
+    另外「家庭贡献值（本周）/（本月）」我按对应周期展示；如实际后端只有“今日/累计”两种口径，实现时再对齐。
+  </div>
+
+  <!-- ===================== ① 顶部孩子切换区 ===================== -->
+  <section>
+    <div class="sec-head">
+      <span class="no">1</span>
+      <h2>顶部孩子切换区</h2>
+      <span class="req">需求：可切换孩子，孩子多可横滑；筛选按钮为「圆角矩形」</span>
+    </div>
+    <div class="row">
+
+      <!-- A -->
+      <div class="phone-wrap">
+        <div class="phone-label"><span class="tag">样式 A</span> 横滑头像胶囊</div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+          <div class="page-title">晒娃时刻<small>切换孩子查看专属成长</small></div>
+          <div class="content">
+            <div class="swipe-a">
+              <div class="chip on"><span class="av" style="background:#ff9aa2">明</span>小明</div>
+              <div class="chip"><span class="av" style="background:#a0c4ff">红</span>小红</div>
+              <div class="chip"><span class="av" style="background:#ffd166">乐</span>乐乐</div>
+              <div class="chip"><span class="av" style="background:#bdb2ff">安</span>安安</div>
+            </div>
+            <div class="card" style="margin-top:6px">
+              <div class="stat-num">小明</div>
+              <div class="stat-label">当前查看的孩子</div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- B -->
+      <div class="phone-wrap">
+        <div class="phone-label"><span class="tag">样式 B</span> 大卡片横滑（选中放大）</div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+          <div class="page-title">晒娃时刻</div>
+          <div class="content">
+            <div class="swipe-b">
+              <div class="big on">
+                <span class="av" style="background:#ff9aa2;width:48px;height:48px;margin:0 auto">明</span>
+                <div style="font-weight:700;margin-top:6px">小明</div>
+                <div class="muted" style="font-size:11px">♂ 7岁</div>
+              </div>
+              <div class="big">
+                <span class="av" style="background:#a0c4ff;width:48px;height:48px;margin:0 auto">红</span>
+                <div style="font-weight:700;margin-top:6px">小红</div>
+                <div class="muted" style="font-size:11px">♀ 5岁</div>
+              </div>
+              <div class="big">
+                <span class="av" style="background:#ffd166;width:48px;height:48px;margin:0 auto">乐</span>
+                <div style="font-weight:700;margin-top:6px">乐乐</div>
+                <div class="muted" style="font-size:11px">♀ 3岁</div>
+              </div>
+            </div>
+            <div class="card" style="margin-top:4px">
+              <div class="stat-num">小明 · 本周之星</div>
+              <div class="stat-label">选中卡片上浮高亮</div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- C -->
+      <div class="phone-wrap">
+        <div class="phone-label"><span class="tag">样式 C</span> 分段圆角控件</div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+          <div class="page-title">晒娃时刻</div>
+          <div class="content">
+            <div class="seg">
+              <div class="on">小明</div><div>小红</div><div>乐乐</div>
+            </div>
+            <div class="card">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span class="av" style="background:#ff9aa2;width:52px;height:52px;font-size:18px">明</span>
+                <div><div class="stat-num">小明</div><div class="stat-label">分段控件适合孩子≤4人</div></div>
+              </div>
+            </div>
+            <div class="muted" style="font-size:11px;margin-top:8px">孩子超过 4 人时建议改用样式 A/B 横滑</div>
+          </div>
+        </div></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== ② 今日精彩 ===================== -->
+  <section>
+    <div class="sec-head">
+      <span class="no">2</span>
+      <h2>今日精彩</h2>
+      <span class="req">采集：每日完成任务数 · 获得的积分 · 家庭贡献值（今日）</span>
+    </div>
+    <div class="row">
+
+      <!-- A 三列等宽 -->
+      <div class="phone-wrap">
+        <div class="phone-label"><span class="tag">样式 A</span> 三列等宽数字卡</div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+          <div class="page-title">今日精彩<small>小明的今天</small></div>
+          <div class="content">
+            <div style="display:flex;gap:10px">
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num">8</div><div class="stat-label">完成任务</div></div>
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num">45</div><div class="stat-label">获得积分</div></div>
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num">12</div><div class="stat-label">贡献值</div></div>
+            </div>
+            <div class="card" style="margin-top:12px">
+              <div class="section-title">今日亮点</div>
+              <div class="muted" style="font-size:12.5px">坚持阅读绘本，连续 5 天打卡 ✨</div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- B 左大右小 -->
+      <div class="phone-wrap">
+        <div class="phone-label"><span class="tag">样式 B</span> 左大数字 + 右双指标</div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+          <div class="page-title">今日精彩</div>
+          <div class="content">
+            <div class="card" style="display:flex;gap:12px;align-items:center">
+              <div style="flex:0 0 96px;text-align:center">
+                <div class="stat-num" style="font-size:38px">8</div>
+                <div class="stat-label">完成任务数</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;justify-content:space-between"><span class="muted" style="font-size:12px">获得积分</span><b style="color:var(--primary-deep)">45</b></div>
+                <div style="display:flex;justify-content:space-between"><span class="muted" style="font-size:12px">家庭贡献值</span><b style="color:var(--primary-deep)">12</b></div>
+              </div>
+            </div>
+            <div class="card" style="margin-top:12px">
+              <div class="section-title">今日语录</div>
+              <div class="muted" style="font-size:12.5px">“我自己吃完蔬菜啦！”</div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- C 圆环 -->
+      <div class="phone-wrap">
+        <div class="phone-label"><span class="tag">样式 C</span> 圆环仪表 + 药丸</div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+          <div class="page-title">今日精彩</div>
+          <div class="content">
+            <div class="card" style="display:flex;align-items:center;gap:14px">
+              <div class="ring" style="background:conic-gradient(var(--primary) 72%,var(--primary-soft) 0)">8<span style="font-size:10px;font-weight:600;color:var(--muted)">/11</span></div>
+              <div style="flex:1">
+                <div style="font-size:12px;color:var(--muted)">今日任务完成度</div>
+                <div style="font-weight:700;margin:2px 0 8px">已完成 8 项</div>
+                <span class="pill" style="background:var(--primary-soft);color:var(--primary-deep)">积分 45</span>
+                <span class="pill" style="background:#eef7f0;color:#3aa86b;margin-left:6px">贡献 12</span>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== ③ 本周成长 ===================== -->
+  <section>
+    <div class="sec-head">
+      <span class="no">3</span>
+      <h2>本周成长</h2>
+      <span class="req">采集：本周完成任务数 · 获得积分 · 家庭贡献值（本周）· 成长日记 · 最棒任务前三</span>
+    </div>
+    <div class="row">
+
+      <!-- A 顶部三指标+日记+榜 -->
+      <div class="phone-wrap">
+        <div class="phone-label"><span class="tag">样式 A</span> 三指标条 + 日记 + 榜单</div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+          <div class="page-title">本周成长</div>
+          <div class="content">
+            <div style="display:flex;gap:8px">
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num">42</div><div class="stat-label">完成</div></div>
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num">230</div><div class="stat-label">积分</div></div>
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num">68</div><div class="stat-label">贡献</div></div>
+            </div>
+            <div class="diary" style="margin-top:12px"><div class="h">📔 成长日记</div>这周小明学会了自己系鞋带，还主动帮妹妹收拾玩具，进步明显！</div>
+            <div class="section-title">🏆 最棒任务前三</div>
+            <div class="rank"><span class="idx g">1</span><span class="nm">按时睡觉</span><span class="ct">12 次</span></div>
+            <div class="rank"><span class="idx">2</span><span class="nm">整理玩具</span><span class="ct">9 次</span></div>
+            <div class="rank"><span class="idx">3</span><span class="nm">阅读绘本</span><span class="ct">7 次</span></div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- B 两栏 -->
+      <div class="phone-wrap">
+        <div class="phone-label"><span class="tag">样式 B</span> 左指标+日记 / 右榜单</div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+          <div class="page-title">本周成长</div>
+          <div class="content">
+            <div style="display:flex;gap:10px">
+              <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+                <div class="card"><div class="stat-num" style="font-size:20px">42</div><div class="stat-label">完成任务</div></div>
+                <div class="card"><div class="stat-num" style="font-size:20px">230</div><div class="stat-label">获得积分</div></div>
+                <div class="card"><div class="stat-num" style="font-size:20px">68</div><div class="stat-label">贡献值</div></div>
+                <div class="diary" style="font-size:11px">学会系鞋带 🎉</div>
+              </div>
+              <div class="card" style="flex:1">
+                <div class="section-title" style="margin-top:0">最棒任务</div>
+                <div class="rank"><span class="idx g">1</span><span class="nm" style="font-size:12px">按时睡觉</span></div>
+                <div class="rank"><span class="idx">2</span><span class="nm" style="font-size:12px">整理玩具</span></div>
+                <div class="rank"><span class="idx">3</span><span class="nm" style="font-size:12px">阅读绘本</span></div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- C 故事流 -->
+      <div class="phone-wrap">
+        <div class="phone-label"><span class="tag">样式 C</span> 日记为主视觉 + 顶部药丸</div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+          <div class="page-title">本周成长</div>
+          <div class="content">
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <span class="pill" style="background:var(--primary-soft);color:var(--primary-deep)">完成 42</span>
+              <span class="pill" style="background:var(--primary-soft);color:var(--primary-deep)">积分 230</span>
+              <span class="pill" style="background:#eef7f0;color:#3aa86b">贡献 68</span>
+            </div>
+            <div class="diary" style="margin-top:10px;background:#fff;border:1px solid var(--line)">📔 这周小明进步明显，自己系鞋带、帮妹妹收拾玩具，值得表扬！</div>
+            <div class="section-title">🏆 最棒任务前三</div>
+            <div class="rank"><span class="idx g">1</span><span class="nm">按时睡觉</span><span class="ct">12 次</span></div>
+            <div class="rank"><span class="idx">2</span><span class="nm">整理玩具</span><span class="ct">9 次</span></div>
+            <div class="rank"><span class="idx">3</span><span class="nm">阅读绘本</span><span class="ct">7 次</span></div>
+          </div>
+        </div></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== ④ 每月收获 ===================== -->
+  <section>
+    <div class="sec-head">
+      <span class="no">4</span>
+      <h2>每月收获</h2>
+      <span class="req">采集：本月完成任务数 · 获得积分 · 打卡率(%) · 家庭贡献值（本月）· 成长日记 · 最棒任务前三</span>
+    </div>
+    <div class="row">
+
+      <!-- A 指标网格+环形打卡率 -->
+      <div class="phone-wrap">
+        <div class="phone-label"><span class="tag">样式 A</span> 指标网格 + 打卡率环</div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+          <div class="page-title">每月收获<small>10 月 · 小明</small></div>
+          <div class="content">
+            <div style="display:flex;gap:10px;align-items:center">
+              <div class="ring" style="background:conic-gradient(var(--primary) 87%,var(--primary-soft) 0);width:72px;height:72px">87%</div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;justify-content:space-between"><span class="muted" style="font-size:12px">本月完成</span><b style="color:var(--primary-deep)">168</b></div>
+                <div style="display:flex;justify-content:space-between"><span class="muted" style="font-size:12px">获得积分</span><b style="color:var(--primary-deep)">920</b></div>
+                <div style="display:flex;justify-content:space-between"><span class="muted" style="font-size:12px">贡献值</span><b style="color:var(--primary-deep)">256</b></div>
+              </div>
+            </div>
+            <div class="diary" style="margin-top:12px"><div class="h">📔 本月日记</div>坚持打卡一整月，阅读量明显提升，性格也更独立了。</div>
+            <div class="section-title">🏆 最棒任务前三</div>
+            <div class="rank"><span class="idx g">1</span><span class="nm">阅读绘本</span><span class="ct">38 次</span></div>
+            <div class="rank"><span class="idx">2</span><span class="nm">按时睡觉</span><span class="ct">30 次</span></div>
+            <div class="rank"><span class="idx">3</span><span class="nm">整理玩具</span><span class="ct">25 次</span></div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- B 月历感 -->
+      <div class="phone-wrap">
+        <div class="phone-label"><span class="tag">样式 B</span> 月历感 · 打卡率横条</div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+          <div class="page-title">每月收获</div>
+          <div class="content">
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)"><span>本月打卡率</span><b style="color:var(--primary-deep)">87%</b></div>
+              <div class="bar" style="margin-top:8px"><i style="width:87%"></i></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num" style="font-size:20px">168</div><div class="stat-label">完成</div></div>
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num" style="font-size:20px">920</div><div class="stat-label">积分</div></div>
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num" style="font-size:20px">256</div><div class="stat-label">贡献</div></div>
+            </div>
+            <div class="diary" style="margin-top:10px;font-size:11.5px">本月阅读量提升，性格更独立 🌱</div>
+            <div class="section-title">🏆 最棒任务</div>
+            <div class="rank"><span class="idx g">1</span><span class="nm" style="font-size:12px">阅读绘本</span><span class="ct">38</span></div>
+            <div class="rank"><span class="idx">2</span><span class="nm" style="font-size:12px">按时睡觉</span><span class="ct">30</span></div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- C 成就墙 -->
+      <div class="phone-wrap">
+        <div class="phone-label"><span class="tag">样式 C</span> 成就墙 · 徽章化榜单</div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+          <div class="page-title">每月收获</div>
+          <div class="content">
+            <div style="display:flex;gap:8px">
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num" style="font-size:22px">168</div><div class="stat-label">完成</div></div>
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num" style="font-size:22px">920</div><div class="stat-label">积分</div></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num" style="font-size:22px">87%</div><div class="stat-label">打卡率</div></div>
+              <div class="card" style="flex:1;text-align:center"><div class="stat-num" style="font-size:22px">256</div><div class="stat-label">贡献</div></div>
+            </div>
+            <div class="section-title">🏅 最棒任务徽章</div>
+            <div style="display:flex;gap:8px">
+              <div class="card" style="flex:1;text-align:center"><div style="font-size:26px">🥇</div><div style="font-weight:700;font-size:12px;margin-top:4px">阅读绘本</div><div class="muted" style="font-size:11px">38次</div></div>
+              <div class="card" style="flex:1;text-align:center"><div style="font-size:26px">🥈</div><div style="font-weight:700;font-size:12px;margin-top:4px">按时睡觉</div><div class="muted" style="font-size:11px">30次</div></div>
+              <div class="card" style="flex:1;text-align:center"><div style="font-size:26px">🥉</div><div style="font-weight:700;font-size:12px;margin-top:4px">整理玩具</div><div class="muted" style="font-size:11px">25次</div></div>
+            </div>
+            <div class="diary" style="margin-top:10px;font-size:11.5px">本月成长满满，继续加油！</div>
+          </div>
+        </div></div>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="note" style="max-width:1180px;margin:40px auto 0">
+    📌 <b>通用交互（所有样式共用）</b>：页面底部固定「保存海报」按钮 → 点击后<b>客户端本地</b>用 Canvas 合成图片并调用系统保存到相册；<b>后台不生成图片</b>，仅提供已采集的数据接口。数据每次进入页面/切换孩子时实时拉取。
+  </div>
+</body>
+</html>

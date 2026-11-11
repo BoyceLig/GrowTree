@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>成长树 · 登录页「我是孩子」按钮 · 三套方案</title>
+<style>
+  :root{
+    --page-bg:#f4f5f3;
+    --ink:#1d2420;
+    --sub:#6b756f;
+    --line:#e2e5e1;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(900px 500px at 12% -8%, #e8f3ec 0%, transparent 60%),
+      var(--page-bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:36px 28px 72px;
+  }
+
+  .head{max-width:1600px;margin:0 auto 30px;}
+  .head h1{margin:0 0 10px;font-size:26px;font-weight:600;letter-spacing:.02em;}
+  .head p{margin:0;font-size:14px;line-height:1.7;color:var(--sub);max-width:760px;}
+
+  .grid{
+    max-width:1600px;margin:0 auto;
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(375px,1fr));
+    gap:34px;justify-items:center;
+  }
+  .card{width:100%;max-width:420px;}
+  .cap{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;padding:0 4px;}
+  .badge{
+    flex:none;width:30px;height:30px;border-radius:10px;
+    display:grid;place-items:center;font-size:14px;font-weight:700;
+    color:#fff;background:#2c3a33;margin-top:2px;
+  }
+  .cap h3{margin:0 0 4px;font-size:16.5px;font-weight:600;letter-spacing:.01em;}
+  .cap p{margin:0;font-size:12.5px;line-height:1.65;color:var(--sub);}
+  .pick{
+    display:inline-block;margin-top:8px;padding:3px 10px;border-radius:999px;
+    font-size:11.5px;background:#eaf5ee;color:#1f8a63;border:1px solid #cfe7da;
+  }
+
+  /* ── 手机框 ───────────────────────────────────── */
+  .phone{
+    width:375px;height:760px;margin:0 auto;
+    border-radius:44px;padding:10px;
+    background:linear-gradient(160deg,#2b342e,#151b17);
+    box-shadow:0 30px 60px -20px rgba(20,40,30,.35),0 2px 0 rgba(255,255,255,.5) inset;
+    position:relative;
+  }
+  .phone::after{
+    content:"";position:absolute;top:20px;left:50%;width:100px;height:22px;
+    transform:translateX(-50%);border-radius:999px;background:#0c110e;opacity:.9;
+  }
+  .screen{
+    position:relative;width:100%;height:100%;border-radius:36px;overflow:hidden;
+    display:flex;flex-direction:column;isolation:isolate;
+    /* 当前线上版本：晨光森林 */
+    background:
+      radial-gradient(60% 36% at 14% 2%, rgba(136,214,178,.38) 0%, rgba(136,214,178,0) 70%),
+      linear-gradient(168deg,#f0faf4 0%,#e4f5ec 52%,#d8efe3 100%);
+    color:#14503a;
+  }
+  .glow{position:absolute;inset:-15%;z-index:0;pointer-events:none;}
+  .glow::before{
+    content:"";position:absolute;border-radius:50%;filter:blur(46px);
+    width:330px;height:330px;background:rgba(88,206,155,.38);top:-90px;left:-70px;
+  }
+
+  .brand{position:relative;z-index:2;padding:70px 34px 0;text-align:center;}
+  .mark{
+    width:58px;height:58px;margin:0 auto 14px;border-radius:50%;
+    display:grid;place-items:center;font-size:30px;
+    background:radial-gradient(closest-side,#ffffffcc,#ffffff22);
+  }
+  .name{margin:0;font-size:30px;font-weight:600;letter-spacing:.18em;text-indent:.18em;
+    background:linear-gradient(135deg,#1f7a55,#0f5c3f);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .slogan{margin:8px 0 0;font-size:12.5px;letter-spacing:.3em;text-indent:.3em;color:#4a7a63;}
+
+  .acts{position:relative;z-index:2;padding:34px 30px 0;display:flex;flex-direction:column;gap:14px;}
+
+  /* 家长按钮：三套方案里完全一样（当前线上样式） */
+  .btn-parent{
+    display:flex;align-items:center;gap:13px;padding:14px 16px;border-radius:19px;
+    background:linear-gradient(135deg,#2fbd8b,#178a63);color:#fff;
+    box-shadow:0 14px 30px -8px rgba(23,138,99,.55);
+  }
+  .btn-parent .ic{flex:none;width:42px;height:42px;border-radius:13px;display:grid;place-items:center;
+    font-size:21px;background:rgba(255,255,255,.22);}
+  .btn-parent .tx{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .btn-parent .tx b{font-size:16px;font-weight:600;letter-spacing:.04em;}
+  .btn-parent .tx i{font-style:normal;font-size:11.5px;opacity:.82;letter-spacing:.02em;}
+
+  /* ═══ 方案 A：角色分色（孩子 = 蓝实心）═══ */
+  .btn-childA{
+    display:flex;align-items:center;gap:13px;padding:14px 16px;border-radius:19px;
+    background:linear-gradient(135deg,#6ec6f2,#3d97dd);color:#fff;
+    box-shadow:0 14px 30px -8px rgba(61,151,221,.55);
+  }
+  .btn-childA .ic{flex:none;width:42px;height:42px;border-radius:13px;display:grid;place-items:center;
+    font-size:21px;background:rgba(255,255,255,.25);}
+  .btn-childA .tx{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .btn-childA .tx b{font-size:16px;font-weight:600;letter-spacing:.04em;}
+  .btn-childA .tx i{font-style:normal;font-size:11.5px;opacity:.85;letter-spacing:.02em;}
+
+  /* ═══ 方案 B：轻量胶囊（弱化，一行 + 箭头）═══ */
+  .btn-childB{
+    display:flex;align-items:center;gap:10px;padding:11px 16px;border-radius:999px;
+    background:rgba(255,255,255,.78);border:1px solid rgba(23,138,99,.18);
+    color:#175c43;box-shadow:0 6px 16px -12px rgba(16,74,54,.4);
+  }
+  .btn-childB .ic{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+    font-size:16px;background:rgba(47,189,139,.14);}
+  .btn-childB .tx{flex:1;display:flex;align-items:baseline;gap:8px;min-width:0;}
+  .btn-childB .tx b{font-size:14.5px;font-weight:600;letter-spacing:.04em;}
+  .btn-childB .tx i{font-style:normal;font-size:11px;color:#4a7a63;letter-spacing:.02em;}
+  .btn-childB .chev{flex:none;font-size:15px;color:#2f8f68;opacity:.8;}
+
+  /* ═══ 方案 C：童趣卡（暖黄徽章 + 积分币）═══ */
+  .btn-childC{
+    position:relative;display:flex;align-items:center;gap:13px;padding:14px 16px;border-radius:19px;
+    background:#fffdf6;border:2px solid #ffd98e;
+    color:#6b4a1f;box-shadow:0 14px 30px -12px rgba(224,160,60,.45);
+  }
+  .btn-childC .ic{flex:none;width:42px;height:42px;border-radius:14px;display:grid;place-items:center;
+    font-size:21px;background:linear-gradient(135deg,#ffe9bd,#ffd98e);}
+  .btn-childC .tx{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .btn-childC .tx b{font-size:16px;font-weight:600;letter-spacing:.04em;}
+  .btn-childC .tx i{font-style:normal;font-size:11.5px;color:#9a7a4a;letter-spacing:.02em;}
+  .btn-childC .coin{
+    margin-left:auto;flex:none;display:inline-flex;align-items:center;gap:4px;
+    padding:4px 9px;border-radius:999px;font-size:10.5px;font-weight:600;
+    background:#fff3d6;color:#a06a1d;border:1px solid #ffe1a3;
+  }
+
+  /* ── 弹幕（三套一样，静态摆位示意）── */
+  .dm-wrap{position:relative;z-index:2;flex:1;min-height:0;margin-top:24px;display:flex;flex-direction:column;justify-content:flex-end;}
+  .dm-hint{padding:0 30px 8px;font-size:10.5px;letter-spacing:.16em;color:#5d8471;opacity:.85;}
+  .danmu{position:relative;height:150px;overflow:hidden;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%);
+    mask-image:linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%);}
+  .bubble{
+    position:absolute;display:inline-flex;align-items:center;gap:6px;
+    padding:4px 11px 4px 4px;border-radius:999px;background:rgba(255,255,255,.86);
+    border:1px solid rgba(255,255,255,.95);color:#2c5a46;font-size:11px;line-height:1.2;
+    white-space:nowrap;box-shadow:0 4px 12px -6px rgba(20,40,32,.28);
+  }
+  .bubble .av{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;}
+
+  .foot{position:relative;z-index:2;padding:12px 30px 20px;font-size:9.5px;text-align:center;color:rgba(18,60,43,.5);}
+
+  .notes{
+    max-width:1600px;margin:46px auto 0;padding:22px 24px;background:#fff;
+    border:1px solid var(--line);border-radius:18px;
+    box-shadow:0 10px 30px -22px rgba(20,40,30,.35);
+  }
+  .notes h4{margin:0 0 10px;font-size:14px;font-weight:600;}
+  .notes ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.85;color:#4a554f;}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>成长树 · 登录页「我是孩子」按钮 · 三套方案</h1>
+  <p>
+    三个方案只动<b>「我是孩子」这一颗按钮</b>，「我是家长」和页面其它部分三张图完全一样（都是当前线上版本）。
+    下方弹幕区照旧。选好告诉我编号就行，我再落到小程序里。
+  </p>
+</div>
+
+<div class="grid">
+
+  <!-- A ─────────────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">A</span>
+      <div>
+        <h3>蓝天分色（推荐）</h3>
+        <p>孩子按钮换成<b>天蓝实心</b>，和家长绿并排成「绿=家长、蓝=孩子」的颜色语言。两颗按钮分量相同，一眼就知道是两条入口，孩子看到会觉得「这颗是我的」。</p>
+        <span class="pick">对比最清晰 · 和皮肤体系（冰川蓝）同色系</span>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="glow"></div>
+        <div class="brand">
+          <div class="mark">🌱</div>
+          <h1 class="name">成长树</h1>
+          <p class="slogan">让成长，看得见</p>
+        </div>
+        <div class="acts">
+          <div class="btn-parent">
+            <span class="ic">👨‍👩‍👧</span>
+            <span class="tx"><b>我是家长</b><i>管理任务 · 审核积分 · 看成长</i></span>
+          </div>
+          <div class="btn-childA">
+            <span class="ic">🧒</span>
+            <span class="tx"><b>我是孩子</b><i>完成任务 · 赚积分 · 换心愿</i></span>
+          </div>
+        </div>
+        <div class="dm-wrap">
+          <div class="dm-hint">用成长树的家长这样说</div>
+          <div class="danmu">
+            <span class="bubble" style="left:6%;top:8px"><span class="av" style="background:#ffe1e8">👩</span>不用催了，自己惦记着打卡</span>
+            <span class="bubble" style="left:38%;top:52px"><span class="av" style="background:#dfe9ff">👨</span>第一次见他主动坐到书桌前</span>
+            <span class="bubble" style="left:12%;top:96px"><span class="av" style="background:#e2f7e6">🧒</span>到点就来提醒我该打卡了</span>
+          </div>
+        </div>
+        <div class="foot">登录即代表同意《用户协议》与《隐私政策》</div>
+      </div>
+    </div>
+  </article>
+
+  <!-- B ─────────────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">B</span>
+      <div>
+        <h3>轻量胶囊</h3>
+        <p>孩子按钮<b>降一级</b>：矮一截、一行字、圆胶囊，右端一个「›」。家长的主入口更突出，页面更安静；代价是孩子入口的存在感弱一些。</p>
+        <span class="pick">最克制 · 适合「家长是主要使用者」的判断</span>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="glow"></div>
+        <div class="brand">
+          <div class="mark">🌱</div>
+          <h1 class="name">成长树</h1>
+          <p class="slogan">让成长，看得见</p>
+        </div>
+        <div class="acts">
+          <div class="btn-parent">
+            <span class="ic">👨‍👩‍👧</span>
+            <span class="tx"><b>我是家长</b><i>管理任务 · 审核积分 · 看成长</i></span>
+          </div>
+          <div class="btn-childB">
+            <span class="ic">🧒</span>
+            <span class="tx"><b>我是孩子</b><i>赚积分 · 换心愿</i></span>
+            <span class="chev">›</span>
+          </div>
+        </div>
+        <div class="dm-wrap">
+          <div class="dm-hint">用成长树的家长这样说</div>
+          <div class="danmu">
+            <span class="bubble" style="left:6%;top:8px"><span class="av" style="background:#ffe1e8">👩</span>不用催了，自己惦记着打卡</span>
+            <span class="bubble" style="left:38%;top:52px"><span class="av" style="background:#dfe9ff">👨</span>第一次见他主动坐到书桌前</span>
+            <span class="bubble" style="left:12%;top:96px"><span class="av" style="background:#e2f7e6">🧒</span>到点就来提醒我该打卡了</span>
+          </div>
+        </div>
+        <div class="foot">登录即代表同意《用户协议》与《隐私政策》</div>
+      </div>
+    </div>
+  </article>
+
+  <!-- C ─────────────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">C</span>
+      <div>
+        <h3>童趣徽章卡</h3>
+        <p>孩子按钮改成<b>奶油黄描边的童趣卡</b>，右侧挂一枚「⚡积分」小徽章，和积分玩法直接呼应。孩子气最足；但和绿色主按钮并列时页面颜色变多。</p>
+        <span class="pick">最有孩子气 · 视觉最热闹</span>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="glow"></div>
+        <div class="brand">
+          <div class="mark">🌱</div>
+          <h1 class="name">成长树</h1>
+          <p class="slogan">让成长，看得见</p>
+        </div>
+        <div class="acts">
+          <div class="btn-parent">
+            <span class="ic">👨‍👩‍👧</span>
+            <span class="tx"><b>我是家长</b><i>管理任务 · 审核积分 · 看成长</i></span>
+          </div>
+          <div class="btn-childC">
+            <span class="ic">🧒</span>
+            <span class="tx"><b>我是孩子</b><i>完成任务 · 赚积分 · 换心愿</i></span>
+            <span class="coin">⚡ 积分</span>
+          </div>
+        </div>
+        <div class="dm-wrap">
+          <div class="dm-hint">用成长树的家长这样说</div>
+          <div class="danmu">
+            <span class="bubble" style="left:6%;top:8px"><span class="av" style="background:#ffe1e8">👩</span>不用催了，自己惦记着打卡</span>
+            <span class="bubble" style="left:38%;top:52px"><span class="av" style="background:#dfe9ff">👨</span>第一次见他主动坐到书桌前</span>
+            <span class="bubble" style="left:12%;top:96px"><span class="av" style="background:#e2f7e6">🧒</span>到点就来提醒我该打卡了</span>
+          </div>
+        </div>
+        <div class="foot">登录即代表同意《用户协议》与《隐私政策》</div>
+      </div>
+    </div>
+  </article>
+
+</div>
+
+<div class="notes">
+  <h4>怎么选</h4>
+  <ul>
+    <li><b>方案 A（蓝天分色）</b>：家长和孩子是两个平等的入口，颜色直接区分身份 —— 和「皮肤」里冰川蓝/森林绿的色彩语言一致，将来孩子端整体也是蓝色系。</li>
+    <li><b>方案 B（轻量胶囊）</b>：如果实际使用者里家长远多于孩子（孩子绑一次就不常登录），这版最合适；页面最干净。</li>
+    <li><b>方案 C（童趣徽章卡）</b>：想让登录页对孩子更有吸引力就选它；颜色会比现在热闹一点。</li>
+    <li>三套都保留现有按压手感（hover-class 单按钮下沉），弹幕区不动。</li>
+  </ul>
+</div>
+
+</body>
+</html>

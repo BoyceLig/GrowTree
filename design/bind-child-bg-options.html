@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>成长树 · 孩子绑定页 · 蓝粉渐变背景三方案</title>
+<style>
+  :root{--page-bg:#f4f5f3;--ink:#1d2420;--sub:#6b756f;--line:#e2e5e1;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(900px 500px at 12% -8%, #e8f3ec 0%, transparent 60%),
+      var(--page-bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:36px 28px 72px;
+  }
+  .head{max-width:1640px;margin:0 auto 30px;}
+  .head h1{margin:0 0 10px;font-size:26px;font-weight:600;letter-spacing:.02em;}
+  .head p{margin:0;font-size:14px;line-height:1.7;color:var(--sub);max-width:900px;}
+  .head .tips{
+    display:inline-flex;align-items:center;gap:8px;margin-top:14px;padding:8px 14px;
+    border-radius:999px;background:#fff;border:1px solid var(--line);font-size:12.5px;color:#3d4a43;
+    box-shadow:0 4px 14px rgba(28,50,40,.05);
+  }
+  .head .tips b{color:#b4266a;font-weight:600;}
+
+  .grid{
+    max-width:1640px;margin:0 auto;
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(375px,1fr));
+    gap:34px;justify-items:center;
+  }
+  .card{width:100%;max-width:420px;}
+  .cap{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;padding:0 4px;}
+  .badge{
+    flex:none;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;
+    font-size:14px;font-weight:700;color:#fff;background:#2c3a33;margin-top:2px;
+  }
+  .cap h3{margin:0 0 4px;font-size:16.5px;font-weight:600;}
+  .cap p{margin:0;font-size:12.5px;line-height:1.65;color:var(--sub);}
+  .pick{
+    display:inline-block;margin-top:8px;padding:3px 10px;border-radius:999px;
+    font-size:11.5px;background:#eaf5ee;color:#1f8a63;border:1px solid #cfe7da;
+  }
+  .sw{display:flex;gap:5px;margin-left:auto;padding-top:6px;}
+  .sw i{width:16px;height:16px;border-radius:50%;display:block;border:1px solid rgba(0,0,0,.06);}
+
+  /* ── 手机壳 ───────────────────────────────── */
+  .phone{
+    width:375px;height:700px;margin:0 auto;border-radius:44px;padding:10px;
+    background:linear-gradient(160deg,#2b342e,#151b17);
+    box-shadow:0 30px 60px -20px rgba(20,40,30,.35),0 2px 0 rgba(255,255,255,.5) inset;
+    position:relative;
+  }
+  .phone::after{
+    content:"";position:absolute;top:20px;left:50%;width:100px;height:22px;
+    transform:translateX(-50%);border-radius:999px;background:#0c110e;opacity:.9;
+  }
+  .screen{
+    position:relative;width:100%;height:100%;border-radius:36px;overflow:hidden;
+    display:flex;flex-direction:column;isolation:isolate;color:#1c3a4d;
+  }
+  .glow{position:absolute;inset:-15%;z-index:0;pointer-events:none;}
+  .glow::before{
+    content:"";position:absolute;border-radius:50%;filter:blur(50px);
+    width:340px;height:340px;background:rgba(120,180,240,.34);top:-110px;left:-80px;
+  }
+  .glow::after{
+    content:"";position:absolute;border-radius:50%;filter:blur(50px);
+    width:330px;height:330px;background:rgba(250,165,200,.34);bottom:-120px;right:-90px;
+  }
+
+  /* ── 页面头 ───────────────────────────────── */
+  .nav{
+    position:relative;z-index:3;height:52px;display:flex;align-items:center;
+    padding:0 14px;gap:8px;padding-top:26px;height:78px;
+  }
+  .back{
+    flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+    font-size:16px;color:#33556b;background:rgba(255,255,255,.66);
+    border:1px solid rgba(255,255,255,.9);
+  }
+  .nav h2{margin:0;font-size:16.5px;font-weight:600;color:#1c3a4d;letter-spacing:.02em;}
+
+  /* ── 内容 ─────────────────────────────────── */
+  .body{
+    position:relative;z-index:2;flex:1;padding:6px 16px 26px;
+    display:flex;flex-direction:column;gap:24px;
+  }
+  .glass{
+    background:rgba(255,255,255,.62);
+    border:1px solid rgba(255,255,255,.86);
+    border-radius:20px;
+    box-shadow:0 18px 38px -26px rgba(56,96,130,.55),0 1px 0 rgba(255,255,255,.7) inset;
+    backdrop-filter:blur(14px);
+  }
+  .intro{padding:16px;display:flex;flex-direction:column;gap:8px;}
+  .intro-title{font-size:15px;font-weight:600;color:#1c3a4d;line-height:1.45;}
+  .intro-text{font-size:12.5px;color:#4f6b7d;line-height:1.7;}
+
+  .field{display:flex;flex-direction:column;gap:8px;}
+  .label{font-size:13px;color:#4f6b7d;font-weight:500;}
+
+  .cells{display:flex;gap:9px;}
+  .cell{
+    flex:1;height:52px;border-radius:14px;display:grid;place-items:center;
+    font-size:22px;font-weight:600;color:#1c3a4d;
+    background:rgba(255,255,255,.72);
+    border:1.5px solid rgba(255,255,255,.92);
+    box-shadow:0 8px 20px -16px rgba(56,96,130,.6);
+  }
+  .cell.waiting{
+    border-color:#8fb7d6;
+    box-shadow:0 0 0 3px rgba(143,183,214,.24),0 8px 20px -16px rgba(56,96,130,.6);
+  }
+  .caret{width:2px;height:24px;border-radius:2px;background:#5d93b8;}
+
+  .btn-go{
+    height:50px;border-radius:25px;display:grid;place-items:center;
+    font-size:16px;font-weight:600;letter-spacing:.06em;color:#fff;
+    background:linear-gradient(160deg,#34c08f,#1b8b64);
+    box-shadow:0 16px 32px -12px rgba(27,139,100,.5);
+  }
+  .btn-go.off{background:linear-gradient(160deg,#c9d3da,#aab7c0);box-shadow:none;color:#f4f7f9;}
+  /* 蓝粉版按钮（备选） */
+  .btn-go.blue{
+    background:linear-gradient(105deg,#5aa7dd,#ef86b3);
+    box-shadow:0 16px 32px -12px rgba(120,110,170,.52);
+  }
+  .hint{font-size:11.5px;line-height:1.75;color:#58788b;text-align:center;}
+
+  /* ── 四套背景 ─────────────────────────────── */
+  /* 当前（默认蜜桃粉）作为对照 */
+  .bg-now{
+    background:
+      radial-gradient(58% 34% at 14% 0%, rgba(255,196,214,.42) 0%, rgba(255,196,214,0) 70%),
+      linear-gradient(168deg,#fff5f7 0%,#fdeef2 52%,#f8e4ec 100%);
+  }
+  .bg-now .glow::before{background:rgba(255,180,205,.36);}
+  .bg-now .glow::after{background:rgba(255,205,220,.34);}
+
+  /* A 晨雾：淡蓝 → 淡粉，竖向，最接近你选的「奶昔」按钮 */
+  .bg-A{
+    background:
+      radial-gradient(62% 38% at 12% -2%, rgba(150,200,240,.42) 0%, rgba(150,200,240,0) 72%),
+      radial-gradient(62% 40% at 92% 102%, rgba(250,170,200,.42) 0%, rgba(250,170,200,0) 72%),
+      linear-gradient(168deg,#eaf4fd 0%,#f1eefb 52%,#fdeef4 100%);
+  }
+  /* B 分色：左蓝右粉，色块更明确，斜切 */
+  .bg-B{
+    background:
+      radial-gradient(70% 50% at 0% 8%, rgba(140,195,240,.5) 0%, rgba(140,195,240,0) 70%),
+      radial-gradient(70% 52% at 100% 92%, rgba(252,160,196,.5) 0%, rgba(252,160,196,0) 70%),
+      linear-gradient(140deg,#dcecfb 0%,#ece7f8 48%,#ffe6ef 100%);
+  }
+  /* C 极浅：几乎白，只留一点蓝粉影子 */
+  .bg-C{
+    background:
+      radial-gradient(60% 36% at 10% 0%, rgba(176,215,245,.34) 0%, rgba(176,215,245,0) 72%),
+      radial-gradient(60% 36% at 94% 100%, rgba(252,190,212,.32) 0%, rgba(252,190,212,0) 72%),
+      linear-gradient(168deg,#f6fbfe 0%,#fbf7fb 54%,#fef4f8 100%);
+  }
+
+  /* 每套背景对应的卡片阴影（蓝粉底上不能用粉调阴影，会发脏） */
+  .bg-A .glass,.bg-B .glass,.bg-C .glass,
+  .bg-A .cell,.bg-B .cell,.bg-C .cell{}
+
+  .metric{
+    margin-top:10px;padding:10px 12px;border-radius:12px;background:#fff;
+    border:1px solid var(--line);font-size:11.5px;line-height:1.7;color:#4a554f;
+  }
+  .metric b{color:#1d2420;}
+  .metric code{background:#f1f3f0;border-radius:4px;padding:0 4px;font-size:11px;}
+
+  .notes{
+    max-width:1640px;margin:44px auto 0;padding:22px 24px;background:#fff;
+    border:1px solid var(--line);border-radius:18px;
+    box-shadow:0 10px 30px -22px rgba(20,40,30,.35);
+  }
+  .notes h4{margin:0 0 10px;font-size:14px;font-weight:600;}
+  .notes ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.85;color:#4a554f;}
+  .notes li{margin-bottom:4px;}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>成长树 · 孩子绑定页 · 蓝粉渐变背景</h1>
+  <p>
+    这页现在是「全局默认色」（蜜桃粉）。下面三套把<b>整页背景</b>换成蓝粉渐变，从浅到略微明显。
+    页面内容（说明卡、6 格绑定码、按钮、底部提示）保持现在的大小和位置，只换底色 —— 方便你直接比较颜色。
+  </p>
+  <div class="tips">注意：底色变成蓝粉后，<b>绿色「这就是我」按钮</b>会跳出来。最后一台手机演示了按钮也改成蓝粉的效果</div>
+</div>
+
+<div class="grid">
+
+  <!-- 当前 ───────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">现</span>
+      <div>
+        <h3>现在（蜜桃粉 · 对照）</h3>
+        <p>改之前的原样。底色粉，绿按钮压得住，整体是暖的。</p>
+      </div>
+      <span class="sw"><i style="background:#fff5f7"></i><i style="background:#fdeef2"></i><i style="background:#f8e4ec"></i></span>
+    </div>
+    <div class="phone">
+      <div class="screen bg-now">
+        <div class="glow"></div>
+        <div class="nav"><span class="back">‹</span><h2>绑定我的账号</h2></div>
+        <div class="body">
+          <div class="glass intro">
+            <div class="intro-title">小朋友，去问爸爸妈妈要个码 🎫</div>
+            <div class="intro-text">让爸爸妈妈打开他们的小程序，在「家庭」页面里找到你的名字，点「生成绑定码」，把那 6 个数字告诉你。</div>
+            <div class="intro-text">输一次就好。以后用这个微信打开，直接就是你的账号，不用再输了。</div>
+          </div>
+          <div class="field">
+            <div class="label">绑定码</div>
+            <div class="cells">
+              <div class="cell waiting"><span class="caret"></span></div>
+              <div class="cell"></div><div class="cell"></div>
+              <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+            </div>
+          </div>
+          <div class="btn-go off">这就是我</div>
+          <div class="hint">这个码只能用一次，而且只能绑到爸爸妈妈给你建好的那个名字上，别人拿到也用不了。</div>
+        </div>
+      </div>
+    </div>
+    <div class="metric">背景：<code>linear-gradient(168deg,#fff5f7,#fdeef2,#f8e4ec)</code></div>
+  </article>
+
+  <!-- A ───────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">A</span>
+      <div>
+        <h3>晨雾（推荐）</h3>
+        <p>顶上淡蓝、底下淡粉，中间自然过渡。和你刚才选的「奶昔」按钮是同一套颜色，孩子从登录页点进来颜色是连着的。</p>
+        <span class="pick">推荐：最连贯，也最不容易看腻</span>
+      </div>
+      <span class="sw"><i style="background:#eaf4fd"></i><i style="background:#f1eefb"></i><i style="background:#fdeef4"></i></span>
+    </div>
+    <div class="phone">
+      <div class="screen bg-A">
+        <div class="glow"></div>
+        <div class="nav"><span class="back">‹</span><h2>绑定我的账号</h2></div>
+        <div class="body">
+          <div class="glass intro">
+            <div class="intro-title">小朋友，去问爸爸妈妈要个码 🎫</div>
+            <div class="intro-text">让爸爸妈妈打开他们的小程序，在「家庭」页面里找到你的名字，点「生成绑定码」，把那 6 个数字告诉你。</div>
+            <div class="intro-text">输一次就好。以后用这个微信打开，直接就是你的账号，不用再输了。</div>
+          </div>
+          <div class="field">
+            <div class="label">绑定码</div>
+            <div class="cells">
+              <div class="cell waiting"><span class="caret"></span></div>
+              <div class="cell"></div><div class="cell"></div>
+              <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+            </div>
+          </div>
+          <div class="btn-go off">这就是我</div>
+          <div class="hint">这个码只能用一次，而且只能绑到爸爸妈妈给你建好的那个名字上，别人拿到也用不了。</div>
+        </div>
+      </div>
+    </div>
+    <div class="metric">背景：<code>linear-gradient(168deg,#eaf4fd,#f1eefb,#fdeef4)</code><br>
+      两团光：左淡蓝 <b>rgba(150,200,240,.42)</b> · 右淡粉 <b>rgba(250,170,200,.42)</b></div>
+  </article>
+
+  <!-- B ───────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">B</span>
+      <div>
+        <h3>分色（蓝粉各一边）</h3>
+        <p>左上偏蓝、右下偏粉，斜着分开，颜色比 A 明确一点。孩子一眼能看出「这页是彩色的」。</p>
+        <span class="pick">颜色最明显，但也最容易显旧</span>
+      </div>
+      <span class="sw"><i style="background:#dcecfb"></i><i style="background:#ece7f8"></i><i style="background:#ffe6ef"></i></span>
+    </div>
+    <div class="phone">
+      <div class="screen bg-B">
+        <div class="glow"></div>
+        <div class="nav"><span class="back">‹</span><h2>绑定我的账号</h2></div>
+        <div class="body">
+          <div class="glass intro">
+            <div class="intro-title">小朋友，去问爸爸妈妈要个码 🎫</div>
+            <div class="intro-text">让爸爸妈妈打开他们的小程序，在「家庭」页面里找到你的名字，点「生成绑定码」，把那 6 个数字告诉你。</div>
+            <div class="intro-text">输一次就好。以后用这个微信打开，直接就是你的账号，不用再输了。</div>
+          </div>
+          <div class="field">
+            <div class="label">绑定码</div>
+            <div class="cells">
+              <div class="cell waiting"><span class="caret"></span></div>
+              <div class="cell"></div><div class="cell"></div>
+              <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+            </div>
+          </div>
+          <div class="btn-go off">这就是我</div>
+          <div class="hint">这个码只能用一次，而且只能绑到爸爸妈妈给你建好的那个名字上，别人拿到也用不了。</div>
+        </div>
+      </div>
+    </div>
+    <div class="metric">背景：<code>linear-gradient(140deg,#dcecfb,#ece7f8,#ffe6ef)</code></div>
+  </article>
+
+  <!-- C ───────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">C</span>
+      <div>
+        <h3>极浅（几乎白）</h3>
+        <p>只在角上留一点蓝和粉的影子，主体接近白。最干净，代价是「渐变」几乎看不出来，像白底。</p>
+        <span class="pick">最淡，适合怕花的人</span>
+      </div>
+      <span class="sw"><i style="background:#f6fbfe"></i><i style="background:#fbf7fb"></i><i style="background:#fef4f8"></i></span>
+    </div>
+    <div class="phone">
+      <div class="screen bg-C">
+        <div class="glow"></div>
+        <div class="nav"><span class="back">‹</span><h2>绑定我的账号</h2></div>
+        <div class="body">
+          <div class="glass intro">
+            <div class="intro-title">小朋友，去问爸爸妈妈要个码 🎫</div>
+            <div class="intro-text">让爸爸妈妈打开他们的小程序，在「家庭」页面里找到你的名字，点「生成绑定码」，把那 6 个数字告诉你。</div>
+            <div class="intro-text">输一次就好。以后用这个微信打开，直接就是你的账号，不用再输了。</div>
+          </div>
+          <div class="field">
+            <div class="label">绑定码</div>
+            <div class="cells">
+              <div class="cell waiting"><span class="caret"></span></div>
+              <div class="cell"></div><div class="cell"></div>
+              <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+            </div>
+          </div>
+          <div class="btn-go off">这就是我</div>
+          <div class="hint">这个码只能用一次，而且只能绑到爸爸妈妈给你建好的那个名字上，别人拿到也用不了。</div>
+        </div>
+      </div>
+    </div>
+    <div class="metric">背景：<code>linear-gradient(168deg,#f6fbfe,#fbf7fb,#fef4f8)</code></div>
+  </article>
+
+  <!-- A + 蓝粉按钮 ─────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">A+</span>
+      <div>
+        <h3>晨雾 + 按钮也改蓝粉</h3>
+        <p>同 A 的底色，把「这就是我」从绿色换成蓝→粉渐变。整页一个色系，最统一；代价是按钮没有绿色那么「催人按」。</p>
+        <span class="pick">备选：要统一就选这个</span>
+      </div>
+      <span class="sw"><i style="background:#eaf4fd"></i><i style="background:#5aa7dd"></i><i style="background:#ef86b3"></i></span>
+    </div>
+    <div class="phone">
+      <div class="screen bg-A">
+        <div class="glow"></div>
+        <div class="nav"><span class="back">‹</span><h2>绑定我的账号</h2></div>
+        <div class="body">
+          <div class="glass intro">
+            <div class="intro-title">小朋友，去问爸爸妈妈要个码 🎫</div>
+            <div class="intro-text">让爸爸妈妈打开他们的小程序，在「家庭」页面里找到你的名字，点「生成绑定码」，把那 6 个数字告诉你。</div>
+            <div class="intro-text">输一次就好。以后用这个微信打开，直接就是你的账号，不用再输了。</div>
+          </div>
+          <div class="field">
+            <div class="label">绑定码</div>
+            <div class="cells">
+              <div class="cell waiting"><span class="caret"></span></div>
+              <div class="cell"></div><div class="cell"></div>
+              <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+            </div>
+          </div>
+          <div class="btn-go blue">这就是我</div>
+          <div class="hint">这个码只能用一次，而且只能绑到爸爸妈妈给你建好的那个名字上，别人拿到也用不了。</div>
+        </div>
+      </div>
+    </div>
+    <div class="metric">按钮：<code>linear-gradient(105deg,#5aa7dd,#ef86b3)</code><br>
+      白字对比度约 <b>3.1:1</b>（偏浅，只适合大字粗体）</div>
+  </article>
+
+</div>
+
+<div class="notes">
+  <h4>几个要提前说清楚的点</h4>
+  <ul>
+    <li><b>只影响这一页。</b>孩子绑定页是「还没登录、不知道你是谁」的页面，所以只能写死一套蓝粉，不会跟着人变色。</li>
+    <li><b>蓝粉底上不能再压粉调阴影。</b>现在卡片阴影是粉的，落在蓝底会发脏红；选哪套我就把那页的阴影换成蓝灰调（像上面演示的这样）。</li>
+    <li><b>绿按钮要不要换？</b>上面 A 是「只换底、按钮保持绿」，A+ 是「按钮也换蓝粉」。绿按钮更醒目、更容易点；蓝粉按钮更统一。你定一个。</li>
+    <li><b>6 格输入框</b>底色会和背景稍分开一点（半透明白），不然在浅蓝上会糊成一片 —— 上面已经按这个做了。</li>
+  </ul>
+</div>
+
+</body>
+</html>

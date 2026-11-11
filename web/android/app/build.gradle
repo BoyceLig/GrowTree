@@ -1,0 +1,66 @@
+apply plugin: 'com.android.application'
+
+// ── 版本号：唯一真源是仓库根目录的 VERSION 文件（形如 20261010-5）──────────────
+// 规则：版本号 = 发布日期 YYYYMMDD，同一天发第 2 版起追加 -2、-3……
+// APK 也直接跟着走，不再手改 —— 手改最容易和镜像/关于页对不上。
+//   versionName = VERSION 原文（20261010-5）
+//   versionCode = YYYYMMDD * 10 + 序号（20261010-5 → 2026101005），单调递增，
+//                 同一天发多版也能覆盖安装升级
+def gtVersionFile = new File(rootDir, '../../VERSION')
+def gtVersionRaw = gtVersionFile.exists() ? gtVersionFile.text.trim() : '0.0.1'
+def gtVersionBits = gtVersionRaw.split('-')
+def gtVersionCode = (gtVersionBits[0] as int) * 10 + (gtVersionBits.length > 1 ? (gtVersionBits[1] as int) : 0)
+
+android {
+    namespace "com.growtree.app"
+    compileSdk rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.growtree.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // versionCode / versionName 均取自仓库根目录 VERSION（见文件顶部说明）
+        versionCode gtVersionCode
+        versionName gtVersionRaw
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

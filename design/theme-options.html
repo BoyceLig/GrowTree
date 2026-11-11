@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>成长树 · 背景色候选（男孩蓝 / 家长绿）</title>
+<style>
+  :root {
+    --ink: #2b2b33;
+    --ink-2: #5f5f6b;
+    --ink-3: #8b8b97;
+    --line: rgba(0, 0, 0, 0.09);
+    --card: #ffffff;
+    --page: #f6f7f9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 24px 80px;
+    background: var(--page);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .head { max-width: 1320px; margin: 0 auto 28px; }
+  h1 { font-size: 24px; margin: 0 0 10px; letter-spacing: 0.01em; }
+  .sub { font-size: 14px; color: var(--ink-2); line-height: 1.8; max-width: 940px; }
+  .sub b { color: var(--ink); }
+  .bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 18px; padding: 12px 14px; background: #fff;
+    border: 1px solid var(--line); border-radius: 12px; max-width: 940px;
+  }
+  .bar-label { font-size: 13px; color: var(--ink-2); }
+  .seg { display: inline-flex; background: #eef0f3; border-radius: 9px; padding: 3px; }
+  .seg button {
+    border: 0; background: transparent; padding: 6px 14px; border-radius: 7px;
+    font-size: 13px; color: var(--ink-2); cursor: pointer; font-family: inherit;
+  }
+  .seg button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); font-weight: 600; }
+
+  section { max-width: 1320px; margin: 0 auto 46px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 6px; }
+  .sec-head h2 { font-size: 18px; margin: 0; }
+  .sec-head span { font-size: 13px; color: var(--ink-3); }
+  .sec-desc { font-size: 13px; color: var(--ink-2); line-height: 1.75; margin: 0 0 20px; max-width: 940px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 22px; }
+
+  .opt {
+    background: #fff; border: 1px solid var(--line); border-radius: 16px;
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .opt.baseline { outline: 2px solid #cfd6dd; outline-offset: 2px; }
+
+  /* ── 手机预览 ───────────────────────────────────────── */
+  .phone {
+    position: relative; height: 356px; padding: 16px 14px 0;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .status { display: flex; justify-content: space-between; font-size: 9px; opacity: .55; margin-bottom: 10px; letter-spacing: .04em; }
+  .p-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .p-title { font-size: 15px; font-weight: 600; letter-spacing: .02em; }
+  .p-sub { font-size: 8px; opacity: .6; margin-top: 2px; }
+  .p-ava { width: 26px; height: 26px; border-radius: 50%; background: #fff; opacity: .85; display: grid; place-items: center; font-size: 13px; }
+
+  .gcard {
+    border-radius: 16px; padding: 12px 14px; margin-bottom: 9px;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 6px 18px rgba(90, 58, 74, 0.10);
+  }
+  .gcard.big { padding: 14px 14px 12px; text-align: center; }
+  .gcard .lab { font-size: 9px; opacity: .7; }
+  .row { display: flex; justify-content: space-between; align-items: center; font-size: 10px; }
+  .row .r { opacity: .55; font-size: 9px; }
+  .hero { font-size: 34px; font-weight: 700; line-height: 1.15; margin: 4px 0 6px; }
+  .hero small { font-size: 11px; font-weight: 500; opacity: .7; margin-left: 2px; }
+  .trio { display: flex; margin-top: 8px; }
+  .trio > div { flex: 1; }
+  .trio .n { font-size: 13px; font-weight: 600; }
+  .trio .l { font-size: 8px; opacity: .6; margin-top: 2px; }
+
+  .tabbar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 52px;
+    display: flex; align-items: center;
+    background: rgba(255, 255, 255, 0.62);
+    border-top: 1px solid rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(10px);
+  }
+  .tab { flex: 1; text-align: center; font-size: 8px; opacity: .5; }
+  .tab .ic { font-size: 14px; display: block; margin-bottom: 2px; opacity: .8; }
+  .tab.on { opacity: 1; font-weight: 600; }
+  .tab.on .ic { opacity: 1; }
+  .tab .pill { display: block; width: 26px; height: 4px; border-radius: 2px; background: currentColor; opacity: .25; margin: 3px auto 0; }
+
+  /* ── 说明区 ─────────────────────────────────────────── */
+  .meta { padding: 14px 16px 16px; border-top: 1px solid var(--line); }
+  .name { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+  .tag {
+    font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px;
+    background: #eef1f4; color: var(--ink-2);
+  }
+  .tag.rec { background: #e3f6ec; color: #147a52; }
+  .tag.keep { background: #ffe9ef; color: #b23c66; }
+  .desc { font-size: 12px; color: var(--ink-2); line-height: 1.7; margin: 8px 0 0; }
+  .kv { margin-top: 10px; font-size: 11px; line-height: 1.85; color: var(--ink-2); }
+  .kv b { color: var(--ink); font-weight: 600; }
+  .sw { display: flex; gap: 4px; margin-top: 12px; }
+  .sw i { height: 14px; flex: 1; border-radius: 4px; }
+  .code {
+    margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px; line-height: 1.65; color: #4d5560; background: #f6f7f9;
+    border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; word-break: break-all;
+  }
+  .note {
+    max-width: 940px; margin: 0 auto; background: #fff; border: 1px solid var(--line);
+    border-radius: 14px; padding: 18px 20px; font-size: 13px; line-height: 1.9; color: var(--ink-2);
+  }
+  .note h3 { margin: 0 0 10px; font-size: 15px; color: var(--ink); }
+  .note ul { margin: 8px 0 0; padding-left: 20px; }
+  .note code { background: #f0f2f5; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>背景色候选 · 男孩蓝 / 家长绿</h1>
+  <p class="sub">
+    每张卡里的手机屏是<b>按真实页面结构画的</b>（同一个渐变角度、同样的磨砂玻璃卡 rgba(255,255,255,.8)）。
+    <b>女孩粉保持不变</b>（深褐字），放在最后作为基准色参照；<b>男孩蓝 / 家长绿的文字已改为跟着主题走</b> ——
+    蓝底配深海军蓝字、绿底配深松绿字，橄榄田 / 深松林还做了单独微调，色相和背景同族、层次更干净。
+  </p>
+  <div class="bar">
+    <span class="bar-label">预览文字色</span>
+    <div class="seg" id="segText">
+      <button data-text="theme" class="on">文字跟着主题走（蓝字/墨绿字）</button>
+      <button data-text="warm">沿用现在的深褐（只改背景）</button>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="sec-head"><h2>孩子端 · 男孩蓝</h2><span>4 个候选（B1 就是现在线上的那套）</span></div>
+  <p class="sec-desc">孩子端四个 tab（主页 / 任务 / 成长 / 商城）会一起换。判据是「白玻璃卡在上面层次够、字不费眼、看着是给小孩的而不是办公软件」。</p>
+  <div class="grid" id="boys"></div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>家长端 · 绿色</h2><span>5 个候选 · 都从封面「晨光森林」的薄荷绿系里取</span></div>
+  <p class="sec-desc">封面（登录页）用的是 <code>#f0faf4 → #e4f5ec → #d8efe3</code> + 一抹 <code>rgba(136,214,178,.38)</code> 的顶部光。
+    G1 就是把这套原封不动搬到整页，G2~G5 是在同一色系里往深、往浅、往暖、往冷各走一步，你可以直接对比差异。</p>
+  <div class="grid" id="greens"></div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>女孩粉（保持现状）</h2><span>不动，仅作参照</span></div>
+  <div class="grid" id="girls"></div>
+</section>
+
+<div class="note">
+  <h3>两点说明</h3>
+  <ul>
+    <li><b>文字为什么跟着主题走？</b>蓝底/绿底配深褐字会有一点暖冷打架，配同族色相的深字更干净：男孩蓝用<b>深海军蓝</b>字（<code>#1e3a57</code> 主 / <code>#3d5f80</code> 次 / <code>#5c7d9c</code> 弱），家长绿用<b>深松绿</b>字（<code>#1f4736</code> 主 / <code>#3d6a54</code> 次 / <code>#5d8570</code> 弱）。所有正文色在最浅与最深的候选底上对比度都 ≥ 6:1（远高于 4.5:1 达标线）；<b>橄榄田 G4</b> 单独换成橄榄字、<b>深海蓝 B3 / 深松林 G5</b> 因底最深字再压半档，卡片阴影也从暖褐改成随主题冷暖。上方切换键仍可对照「沿用深褐（只改背景）」的效果。</li>
+    <li><b>家长端现在还没有主题</b>，所有家长页面（总览 / 任务 / 积分 / 成长 / 商城 / 审核 / 流水 / 树洞 / 我的 / 加购 / 帮助…）统一走粉色。选定后我会把它们整体切到绿色，孩子端那 4 个 tab 继续按性别（女孩粉 / 男孩蓝），「我的」这种两端共用的页面按当前身份自动变。</li>
+  </ul>
+</div>
+
+<script>
+// ── 文字色板 ──────────────────────────────────────────────
+// warm：女孩粉基准，保持现状不动
+// 蓝/绿系：文字色相与背景同族（蓝底→深海军蓝字，绿底→深松绿字），
+// 对比度按最浅/最深底都 ≥ 6:1 校过；shadow 也跟着主题冷暖走。
+const WARM = {
+  primary: '#5a3a4a', secondary: '#75505f', muted: '#7d6373',
+  shadow: '0 6px 18px rgba(90, 58, 74, 0.10)',
+};
+const TEXT_BLUE = {
+  primary: '#1e3a57', secondary: '#3d5f80', muted: '#5c7d9c',
+  shadow: '0 6px 18px rgba(30, 45, 60, 0.10)',
+};
+const TEXT_GREEN = {
+  primary: '#1f4736', secondary: '#3d6a54', muted: '#5d8570',
+  shadow: '0 6px 18px rgba(30, 60, 45, 0.10)',
+};
+// 个别候选的单独微调（覆盖 family 默认值），空缺字段沿用 family
+const TEXT_OVERRIDE = {
+  B3: { primary: '#18334f', secondary: '#37577a', muted: '#54759a' }, // 深海蓝：底最深，字再压半档
+  G4: { primary: '#3a4a22', secondary: '#5c6e3a', muted: '#7a8a58', shadow: '0 6px 18px rgba(70, 80, 30, 0.10)' }, // 橄榄田：字随底偏橄榄
+  G5: { primary: '#17392b', secondary: '#33604a', muted: '#527c66' }, // 深松林：底最深，字再压半档
+};
+function textOf(fam, opt) {
+  return Object.assign({}, fam, (opt && TEXT_OVERRIDE[opt.id]) || {});
+}
+
+const GIRL = {
+  id: 'P', name: '蜜桃粉', tag: '保持现状',
+  desc: '孩子端女孩默认色，这次不动。',
+  good: '四个孩子端页面已上线验证过',
+  caution: '—',
+  c: { r1: '#ffd1e3', r2: '#ffc8dd', a: '#ffe5ec', b: '#ffc8dd', c3: '#ffb3d1', fb: '#ffe5ec', angle: '135deg' },
+};
+
+const BOYS = [
+  {
+    id: 'B1', name: '晴空蓝', tag: '现在的这套',
+    desc: '标准天蓝，最不容易出错的一版。',
+    good: '白卡分层清楚，橙黄点缀跳得出来',
+    caution: '蓝色偏正，谈不上有个性',
+    c: { r1: '#d6e8fe', r2: '#c3ddfb', a: '#e9f2fe', b: '#cfe2fb', c3: '#b3d1f7', fb: '#e6f1fd' },
+  },
+  {
+    id: 'B2', name: '海盐蓝', tag: '更淡更轻',
+    desc: '淡到接近晴天的云，整体往上提亮一档。',
+    good: '清爽、耐看，长时间用不压眼',
+    caution: '底太浅，玻璃卡的「玻璃感」会弱一点',
+    c: { r1: '#dff1fc', r2: '#cfe9f8', a: '#f2fafd', b: '#ddeffb', c3: '#c3e1f5', fb: '#eaf6fd' },
+  },
+  {
+    id: 'B3', name: '深海蓝', tag: '更实更男孩',
+    desc: '同色相往下压两档，蓝得有分量。',
+    good: '白卡对比最强，男孩感最明确',
+    caution: '色重，橙黄点缀在上面会更抢眼',
+    c: { r1: '#cfe0fd', r2: '#b7cefa', a: '#e3ecfe', b: '#c4d7f8', c3: '#a3c1f2', fb: '#d8e5fc' },
+  },
+  {
+    id: 'B4', name: '冰川蓝', tag: '蓝里带一点青',
+    desc: '介于蓝与薄荷之间，冷而通透。',
+    good: '和女孩粉反差最大，一进页面就知道「这不是妹妹的」',
+    caution: '色相偏青，家长端选深绿时两者会有点像',
+    c: { r1: '#d4eef6', r2: '#bfe6f1', a: '#edf9fc', b: '#d2ecf6', c3: '#b2dbec', fb: '#e3f4f9' },
+  },
+];
+
+const GREENS = [
+  {
+    id: 'G1', name: '晨光森林', tag: '与封面同款', rec: true,
+    desc: '登录页那套原封不动搬到整页，顶部那抹光也一起带过来。',
+    good: '封面→正文完全连着，品牌感最整',
+    caution: '比粉色淡一档，卡片存在感略降',
+    c: { r1: 'rgba(136,214,178,.42)', r2: 'rgba(174,231,199,.5)', a: '#f0faf4', b: '#e4f5ec', c3: '#d8efe3', fb: '#e9f6ef', angle: '168deg' },
+  },
+  {
+    id: 'G2', name: '青苔绿', tag: '深一档',
+    desc: '在封面色基础上整体压深，绿得更明确。',
+    good: '比 G1 更有「主色」的存在感',
+    caution: '离封面略远了一步',
+    c: { r1: 'rgba(150,208,176,.42)', r2: 'rgba(190,228,206,.45)', a: '#edf8f1', b: '#ddf1e6', c3: '#c8e7d5', fb: '#e3f4eb', angle: '168deg' },
+  },
+  {
+    id: 'G3', name: '薄荷雾', tag: '最浅',
+    desc: '几乎推到白，绿只留一层薄薄的雾。',
+    good: '最干净，数据页看着清爽',
+    caution: '绿意很淡，远看接近白底',
+    c: { r1: 'rgba(180,228,205,.45)', r2: 'rgba(208,238,224,.5)', a: '#f7fdfa', b: '#eefaf3', c3: '#e1f4ea', fb: '#f3fbf7', angle: '168deg' },
+  },
+  {
+    id: 'G4', name: '橄榄田', tag: '往暖走',
+    desc: '绿里掺一点黄，和橙黄强调色同族。',
+    good: '和「加分/扣分」的暖色最和',
+    caution: '偏黄，和白卡对比弱，容易发旧',
+    c: { r1: 'rgba(198,222,160,.5)', r2: 'rgba(216,235,186,.5)', a: '#f6fbea', b: '#e9f3d8', c3: '#daeac6', fb: '#eff7e1', angle: '168deg' },
+  },
+  {
+    id: 'G5', name: '深松林', tag: '最深',
+    desc: '压到能看见明显绿色，接近实色底。',
+    good: '卡片最立得住，适合信息密度高的总览',
+    caution: '和封面差得最多，需要一并微调阴影',
+    c: { r1: 'rgba(130,190,160,.4)', r2: 'rgba(160,210,180,.45)', a: '#e1f2e8', b: '#cbe7d7', c3: '#b2d6c0', fb: '#d6ecdd', angle: '168deg' },
+  },
+];
+
+function bg(c) {
+  return `radial-gradient(circle at 20% 10%, ${c.r1} 0%, transparent 50%),` +
+         `radial-gradient(circle at 80% 90%, ${c.r2} 0%, transparent 50%),` +
+         `linear-gradient(${c.angle || '135deg'}, ${c.a} 0%, ${c.b} 50%, ${c.c3} 100%)`;
+}
+
+function phone(opt, kind, t) {
+  const shadow = t.shadow;
+  const head = kind === 'child'
+    ? `<div class="p-head"><div><div class="p-title" style="color:${t.primary}">小满的主页</div><div class="p-sub" style="color:${t.muted}">今天也要加油呀</div></div><div class="p-ava">🐰</div></div>`
+    : `<div class="p-head"><div><div class="p-title" style="color:${t.primary}">总览</div><div class="p-sub" style="color:${t.muted}">小满家</div></div><div class="p-ava">🍀</div></div>`;
+
+  const body = kind === 'child'
+    ? `<div class="gcard big" style="box-shadow:${shadow}">
+         <div class="lab" style="color:${t.muted}">我的积分</div>
+         <div class="hero" style="color:${t.primary}">128<small>分</small></div>
+         <div class="trio">
+           <div><div class="n" style="color:${t.secondary}">+12</div><div class="l" style="color:${t.muted}">今天赚到</div></div>
+           <div><div class="n" style="color:${t.secondary}">0</div><div class="l" style="color:${t.muted}">今天扣掉</div></div>
+           <div><div class="n" style="color:${t.secondary}">0</div><div class="l" style="color:${t.muted}">今天花掉</div></div>
+         </div>
+       </div>
+       <div class="gcard" style="box-shadow:${shadow}"><div class="row"><span style="color:${t.primary}">🌳 树洞信箱</span><span class="r" style="color:${t.muted}">给爸妈写句悄悄话 ›</span></div></div>
+       <div class="gcard" style="box-shadow:${shadow}"><div class="row"><span style="color:${t.primary}">🎁 我的心愿单</span><span class="r" style="color:${t.muted}">2 个心愿 ›</span></div></div>`
+    : `<div class="gcard big" style="box-shadow:${shadow}">
+         <div class="lab" style="color:${t.muted}">今天</div>
+         <div class="trio" style="margin-top:12px">
+           <div><div class="n" style="color:${t.primary};font-size:20px">+12</div><div class="l" style="color:${t.muted}">加分</div></div>
+           <div><div class="n" style="color:${t.primary};font-size:20px">0</div><div class="l" style="color:${t.muted}">扣分</div></div>
+           <div><div class="n" style="color:${t.primary};font-size:20px">3</div><div class="l" style="color:${t.muted}">记录</div></div>
+         </div>
+       </div>
+       <div class="gcard" style="box-shadow:${shadow}"><div class="row"><span style="color:${t.primary}">🌳 树洞信箱</span><span class="r" style="color:${t.muted}">和孩子说句悄悄话 ›</span></div></div>
+       <div class="gcard" style="box-shadow:${shadow}"><div class="row"><span style="color:${t.primary}">审核记录</span><span class="r" style="color:${t.muted}">✓ 都审完啦</span></div></div>`;
+
+  const tabs = kind === 'child'
+    ? [['🏠','主页',1],['📋','任务',0],['🌱','成长',0],['🛍️','商城',0]]
+    : [['🏠','总览',1],['📋','任务',0],['⭐','积分',0],['🌱','成长',0],['👤','我的',0]];
+
+  return `<div class="phone" style="background:${bg(opt.c)};background-color:${opt.c.fb}">
+    <div class="status" style="color:${t.muted}"><span>9:41</span><span>•••  ⚡</span></div>
+    ${head}
+    ${body}
+    <div class="tabbar" style="box-shadow:0 -4px 16px rgba(30,45,60,.06)">
+      ${tabs.map(([ic, lb, on]) => `<div class="tab ${on ? 'on' : ''}" style="color:${on ? t.primary : t.muted}"><span class="ic">${ic}</span>${lb}${on ? '<span class="pill"></span>' : ''}</div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function card(opt, kind, t) {
+  const sw = [opt.c.r1, opt.c.r2, opt.c.a, opt.c.b, opt.c.c3].map(c =>
+    `<i style="background:${c.startsWith('rgba') ? c : c}"></i>`).join('');
+  const code = `radial(20% 10%, ${opt.c.r1}), radial(80% 90%, ${opt.c.r2}),\nlinear(${opt.c.angle || '135deg'}, ${opt.c.a}, ${opt.c.b}, ${opt.c.c3})`;
+  return `<div class="opt ${opt.tag.includes('现状') ? 'baseline' : ''}">
+    ${phone(opt, kind, t)}
+    <div class="meta">
+      <div class="name">${opt.id} · ${opt.name}
+        <span class="tag ${opt.rec ? 'rec' : (opt.tag.includes('现状') ? 'keep' : '')}">${opt.tag}</span>
+      </div>
+      <div class="desc">${opt.desc}</div>
+      <div class="kv"><b>优点</b>：${opt.good}<br><b>注意</b>：${opt.caution}</div>
+      <div class="sw">${sw}</div>
+      <div class="code">${code}</div>
+    </div>
+  </div>`;
+}
+
+function render(mode) {
+  document.getElementById('boys').innerHTML = BOYS.map(o => card(o, 'child', textOf(mode === 'warm' ? WARM : TEXT_BLUE, o))).join('');
+  document.getElementById('greens').innerHTML = GREENS.map(o => card(o, 'parent', textOf(mode === 'warm' ? WARM : TEXT_GREEN, o))).join('');
+  document.getElementById('girls').innerHTML = card(GIRL, 'child', WARM);
+}
+
+document.getElementById('segText').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  [...e.currentTarget.children].forEach(x => x.classList.toggle('on', x === b));
+  render(b.dataset.text);
+});
+
+render('theme');
+</script>
+</body>
+</html>

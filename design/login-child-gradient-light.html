@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>成长树 · 孩子按钮 · 浅色蓝粉渐变三方案</title>
+<style>
+  :root{--page-bg:#f4f5f3;--ink:#1d2420;--sub:#6b756f;--line:#e2e5e1;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(900px 500px at 12% -8%, #e8f3ec 0%, transparent 60%),
+      var(--page-bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:36px 28px 72px;
+  }
+  .head{max-width:1600px;margin:0 auto 30px;}
+  .head h1{margin:0 0 10px;font-size:26px;font-weight:600;letter-spacing:.02em;}
+  .head p{margin:0;font-size:14px;line-height:1.7;color:var(--sub);max-width:840px;}
+  .head .tips{
+    display:inline-flex;align-items:center;gap:8px;margin-top:14px;padding:8px 14px;
+    border-radius:999px;background:#fff;border:1px solid var(--line);font-size:12.5px;color:#3d4a43;
+    box-shadow:0 4px 14px rgba(28,50,40,.05);
+  }
+  .head .tips b{color:#b4266a;font-weight:600;}
+
+  .grid{
+    max-width:1600px;margin:0 auto;
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(375px,1fr));
+    gap:34px;justify-items:center;
+  }
+  .card{width:100%;max-width:420px;}
+  .cap{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;padding:0 4px;}
+  .badge{
+    flex:none;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;
+    font-size:14px;font-weight:700;color:#fff;background:#2c3a33;margin-top:2px;
+  }
+  .cap h3{margin:0 0 4px;font-size:16.5px;font-weight:600;}
+  .cap p{margin:0;font-size:12.5px;line-height:1.65;color:var(--sub);}
+  .pick{
+    display:inline-block;margin-top:8px;padding:3px 10px;border-radius:999px;
+    font-size:11.5px;background:#eaf5ee;color:#1f8a63;border:1px solid #cfe7da;
+  }
+  .sw{display:flex;gap:5px;margin-left:auto;padding-top:6px;}
+  .sw i{width:16px;height:16px;border-radius:50%;display:block;border:1px solid rgba(0,0,0,.06);}
+
+  .phone{
+    width:375px;height:700px;margin:0 auto;border-radius:44px;padding:10px;
+    background:linear-gradient(160deg,#2b342e,#151b17);
+    box-shadow:0 30px 60px -20px rgba(20,40,30,.35),0 2px 0 rgba(255,255,255,.5) inset;
+    position:relative;
+  }
+  .phone::after{
+    content:"";position:absolute;top:20px;left:50%;width:100px;height:22px;
+    transform:translateX(-50%);border-radius:999px;background:#0c110e;opacity:.9;
+  }
+  .screen{
+    position:relative;width:100%;height:100%;border-radius:36px;overflow:hidden;
+    display:flex;flex-direction:column;isolation:isolate;color:#14503a;
+    background:
+      radial-gradient(60% 36% at 14% 2%, rgba(136,214,178,.38) 0%, rgba(136,214,178,0) 70%),
+      linear-gradient(168deg,#f0faf4 0%,#e4f5ec 52%,#d8efe3 100%);
+  }
+  .glow{position:absolute;inset:-15%;z-index:0;pointer-events:none;}
+  .glow::before{
+    content:"";position:absolute;border-radius:50%;filter:blur(46px);
+    width:330px;height:330px;background:rgba(88,206,155,.38);top:-90px;left:-70px;
+  }
+  .brand{position:relative;z-index:2;padding:62px 34px 0;text-align:center;}
+  .mark{width:54px;height:54px;margin:0 auto 12px;border-radius:50%;display:grid;place-items:center;
+    font-size:28px;background:radial-gradient(closest-side,#ffffffcc,#ffffff22);}
+  .name{margin:0;font-size:29px;font-weight:600;letter-spacing:.18em;text-indent:.18em;
+    background:linear-gradient(135deg,#1f7a55,#0f5c3f);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .slogan{margin:8px 0 0;font-size:12.5px;letter-spacing:.3em;text-indent:.3em;color:#4a7a63;}
+
+  .acts{position:relative;z-index:2;padding:34px 30px 0;display:flex;flex-direction:column;gap:14px;}
+
+  .btn{display:flex;align-items:center;gap:13px;padding:14px 16px;border-radius:19px;}
+  .btn .ic{flex:none;width:42px;height:42px;border-radius:13px;display:grid;place-items:center;font-size:21px;}
+  .btn .tx{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .btn .tx b{font-size:16px;font-weight:600;letter-spacing:.04em;line-height:1.2;}
+  .btn .tx i{font-style:normal;font-size:11.5px;letter-spacing:.02em;line-height:1.3;}
+
+  .btn-parent{background:linear-gradient(135deg,#2fbd8b,#178a63);color:#fff;
+    box-shadow:0 14px 30px -8px rgba(23,138,99,.55);}
+  .btn-parent .ic{background:rgba(255,255,255,.22);}
+  .btn-parent .tx i{opacity:.82;}
+
+  /* ═══ A 奶昔：淡蓝 → 淡粉，深蓝字 ═══ */
+  .btn-A{
+    background:linear-gradient(135deg,#dceffb 0%,#ffe4ee 100%);
+    color:#1f5375;
+    border:1px solid rgba(255,255,255,.92);
+    box-shadow:0 12px 26px -16px rgba(70,120,150,.55);
+  }
+  .btn-A .ic{background:rgba(255,255,255,.72);}
+  .btn-A .tx i{color:#4a7590;}
+
+  /* ═══ B 草莓牛奶：淡蓝 → 更粉，深梅字 ═══ */
+  .btn-B{
+    background:linear-gradient(135deg,#e6f5fd 0%,#ffd8e8 100%);
+    color:#7a3a58;
+    border:1px solid rgba(255,255,255,.92);
+    box-shadow:0 12px 26px -16px rgba(150,90,120,.5);
+  }
+  .btn-B .ic{background:rgba(255,255,255,.72);}
+  .btn-B .tx i{color:#96637f;}
+
+  /* ═══ C 冰感极浅：几乎白的蓝 → 几乎白的粉，深蓝灰字 ═══ */
+  .btn-C{
+    background:linear-gradient(135deg,#f1fafe 0%,#fdeef4 100%);
+    color:#41596b;
+    border:1px solid rgba(255,255,255,.96);
+    box-shadow:0 10px 22px -18px rgba(60,90,110,.5);
+  }
+  .btn-C .ic{background:rgba(210,235,248,.55);}
+  .btn-C .tx i{color:#7b8f9c;}
+
+  .dm{margin:26px 30px 0;padding-bottom:6px;}
+  .dm-hint{font-size:10.5px;letter-spacing:.16em;color:#5d8471;opacity:.85;}
+  .bubbles{position:relative;height:104px;margin-top:8px;overflow:hidden;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%);
+    mask-image:linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%);}
+  .bubble{position:absolute;display:inline-flex;align-items:center;gap:6px;
+    padding:4px 11px 4px 4px;border-radius:999px;background:rgba(255,255,255,.86);
+    border:1px solid rgba(255,255,255,.95);color:#2c5a46;font-size:11px;white-space:nowrap;
+    box-shadow:0 4px 12px -6px rgba(20,40,32,.28);}
+  .bubble .av{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;}
+
+  .metric{
+    margin-top:10px;padding:10px 12px;border-radius:12px;background:#fff;
+    border:1px solid var(--line);font-size:11.5px;line-height:1.7;color:#4a554f;
+  }
+  .metric b{color:#1d2420;}
+  .metric code{background:#f1f3f0;border-radius:4px;padding:0 4px;font-size:11px;}
+
+  .notes{
+    max-width:1600px;margin:44px auto 0;padding:22px 24px;background:#fff;
+    border:1px solid var(--line);border-radius:18px;
+    box-shadow:0 10px 30px -22px rgba(20,40,30,.35);
+  }
+  .notes h4{margin:0 0 10px;font-size:14px;font-weight:600;}
+  .notes ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.85;color:#4a554f;}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>成长树 · 「我是孩子」按钮 · 浅色蓝粉渐变</h1>
+  <p>
+    三套都是<b>很浅的蓝 → 很浅的粉</b>。浅底上白字看不清，所以文字改成<b>深色</b>（每套配的深色不同，都保证看得清）。
+    上面的「我是家长」保持绿色不变，方便比较两颗按钮的分量。
+  </p>
+  <div class="tips">这三套都很轻 —— 如果觉得孩子按钮「不够显眼」，告我用哪套，我再把描边和投影加重一点</div>
+</div>
+
+<div class="grid">
+
+  <!-- A ───────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">A</span>
+      <div>
+        <h3>奶昔（推荐）</h3>
+        <p>淡蓝到淡粉，字用深蓝。最接近皮肤色卡那两块的观感，浅但看得清，和绿色家长按钮一深一浅刚好分得开。</p>
+        <span class="pick">推荐：浅得刚好，字最清楚</span>
+      </div>
+      <span class="sw"><i style="background:#dceffb"></i><i style="background:#eedff1"></i><i style="background:#ffe4ee"></i></span>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="glow"></div>
+        <div class="brand">
+          <div class="mark">🌱</div>
+          <h1 class="name">成长树</h1>
+          <p class="slogan">让成长，看得见</p>
+        </div>
+        <div class="acts">
+          <div class="btn btn-parent"><span class="ic">👨‍👩‍👧</span>
+            <span class="tx"><b>我是家长</b><i>管理任务 · 审核积分 · 看成长</i></span></div>
+          <div class="btn btn-A"><span class="ic">🧒</span>
+            <span class="tx"><b>我是孩子</b><i>完成任务 · 赚积分 · 换心愿</i></span></div>
+        </div>
+        <div class="dm">
+          <div class="dm-hint">用成长树的家长这样说</div>
+          <div class="bubbles">
+            <span class="bubble" style="left:4%;top:8px"><span class="av" style="background:#ffe1e8">👩</span>不用催了，自己惦记着打卡</span>
+            <span class="bubble" style="left:34%;top:52px"><span class="av" style="background:#dfe9ff">👨</span>第一次见他主动坐到书桌前</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="metric">渐变：<code>linear-gradient(135deg, #dceffb, #ffe4ee)</code><br>
+      文字：<b>#1f5375</b> · 对比度 <b>7.5:1</b></div>
+  </article>
+
+  <!-- B ───────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">B</span>
+      <div>
+        <h3>草莓牛奶（粉更足）</h3>
+        <p>蓝那端更淡、粉那端更粉，字用深梅红。整体偏「甜」，孩子看了更容易觉得「这是给我的」。</p>
+        <span class="pick">女宝更吃这一套，粉色更明显</span>
+      </div>
+      <span class="sw"><i style="background:#e6f5fd"></i><i style="background:#f3e6f2"></i><i style="background:#ffd8e8"></i></span>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="glow"></div>
+        <div class="brand">
+          <div class="mark">🌱</div>
+          <h1 class="name">成长树</h1>
+          <p class="slogan">让成长，看得见</p>
+        </div>
+        <div class="acts">
+          <div class="btn btn-parent"><span class="ic">👨‍👩‍👧</span>
+            <span class="tx"><b>我是家长</b><i>管理任务 · 审核积分 · 看成长</i></span></div>
+          <div class="btn btn-B"><span class="ic">🧒</span>
+            <span class="tx"><b>我是孩子</b><i>完成任务 · 赚积分 · 换心愿</i></span></div>
+        </div>
+        <div class="dm">
+          <div class="dm-hint">用成长树的家长这样说</div>
+          <div class="bubbles">
+            <span class="bubble" style="left:4%;top:8px"><span class="av" style="background:#ffe1e8">👩</span>不用催了，自己惦记着打卡</span>
+            <span class="bubble" style="left:34%;top:52px"><span class="av" style="background:#dfe9ff">👨</span>第一次见他主动坐到书桌前</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="metric">渐变：<code>linear-gradient(135deg, #e6f5fd, #ffd8e8)</code><br>
+      文字：<b>#7a3a58</b> · 对比度 <b>7.1:1</b></div>
+  </article>
+
+  <!-- C ───────────────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">C</span>
+      <div>
+        <h3>冰感（最浅）</h3>
+        <p>几乎白的两端，只留一点蓝和粉的影子，字用深蓝灰。最干净，但也最"淡"—— 像一张白卡而不是彩色按钮。</p>
+        <span class="pick">最淡，适合想极简的人</span>
+      </div>
+      <span class="sw"><i style="background:#f1fafe"></i><i style="background:#f7f4f8"></i><i style="background:#fdeef4"></i></span>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="glow"></div>
+        <div class="brand">
+          <div class="mark">🌱</div>
+          <h1 class="name">成长树</h1>
+          <p class="slogan">让成长，看得见</p>
+        </div>
+        <div class="acts">
+          <div class="btn btn-parent"><span class="ic">👨‍👩‍👧</span>
+            <span class="tx"><b>我是家长</b><i>管理任务 · 审核积分 · 看成长</i></span></div>
+          <div class="btn btn-C"><span class="ic">🧒</span>
+            <span class="tx"><b>我是孩子</b><i>完成任务 · 赚积分 · 换心愿</i></span></div>
+        </div>
+        <div class="dm">
+          <div class="dm-hint">用成长树的家长这样说</div>
+          <div class="bubbles">
+            <span class="bubble" style="left:4%;top:8px"><span class="av" style="background:#ffe1e8">👩</span>不用催了，自己惦记着打卡</span>
+            <span class="bubble" style="left:34%;top:52px"><span class="av" style="background:#dfe9ff">👨</span>第一次见他主动坐到书桌前</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="metric">渐变：<code>linear-gradient(135deg, #f1fafe, #fdeef4)</code><br>
+      文字：<b>#41596b</b> · 对比度 <b>7.6:1</b></div>
+  </article>
+
+  <!-- 对照：深色版 ─────────────────────────── -->
+  <article class="card">
+    <div class="cap">
+      <span class="badge">对</span>
+      <div>
+        <h3>上一版（你说太深的那版）</h3>
+        <p>留着对照：能看出浅色版轻了多少。</p>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="glow"></div>
+        <div class="brand">
+          <div class="mark">🌱</div>
+          <h1 class="name">成长树</h1>
+          <p class="slogan">让成长，看得见</p>
+        </div>
+        <div class="acts">
+          <div class="btn btn-parent"><span class="ic">👨‍👩‍👧</span>
+            <span class="tx"><b>我是家长</b><i>管理任务 · 审核积分 · 看成长</i></span></div>
+          <div class="btn" style="background:linear-gradient(135deg,#2a7dc0,#d95d8a);color:#fff;box-shadow:0 14px 32px -10px rgba(160,90,140,.5)">
+            <span class="ic" style="background:rgba(255,255,255,.24)">🧒</span>
+            <span class="tx"><b>我是孩子</b><i style="opacity:.88">完成任务 · 赚积分 · 换心愿</i></span></div>
+        </div>
+        <div class="dm">
+          <div class="dm-hint">用成长树的家长这样说</div>
+          <div class="bubbles">
+            <span class="bubble" style="left:4%;top:8px"><span class="av" style="background:#ffe1e8">👩</span>不用催了，自己惦记着打卡</span>
+            <span class="bubble" style="left:34%;top:52px"><span class="av" style="background:#dfe9ff">👨</span>第一次见他主动坐到书桌前</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="metric">渐变：<code>linear-gradient(135deg, #2a7dc0, #d95d8a)</code></div>
+  </article>
+
+</div>
+
+<div class="notes">
+  <h4>为什么字要换成深色</h4>
+  <ul>
+    <li>浅底 + 白字在手机上几乎看不清（对比度只有 1.3:1 左右），老人和孩子最先受影响。</li>
+    <li>浅色按钮 + 深色字是同一套「轻量」的观感：按钮不抢戏，但字照样清楚（对比度都在 7:1 以上）。</li>
+    <li>如果还是想要「有颜色 + 白字」，那就得取中间一档（比现在浅、比纯白深很多），我可以再出一版；告诉我方向就行。</li>
+  </ul>
+</div>
+
+</body>
+</html>

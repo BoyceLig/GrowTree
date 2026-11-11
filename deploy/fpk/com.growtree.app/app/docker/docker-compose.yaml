@@ -1,0 +1,27 @@
+# 成长树 · 飞牛 fpk 容器编排
+#
+# 与仓库根部的 docker-compose.yml 的区别：
+#   1. 没有 build: —— 飞牛安装 fpk 时不会现场构建，镜像从公共仓库拉取
+#      （镜像地址见下方 image，发布新版本时先 push 再改这里）
+#   2. 数据卷不用宿主机相对路径，挂到飞牛托管的 ${TRIM_PKGVAR}/data
+#      —— 升级/覆盖安装不丢数据，卸载重装也还在
+#   3. container_name 固定为 growtree，cmd/main 靠它检查运行状态，别随手改
+services:
+  growtree:
+    image: crpi-q6m49k4ufbvik9l5.cn-hangzhou.personal.cr.aliyuncs.com/wdcasc/growtree:20261016
+    container_name: growtree
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATA_DIR=/app/data
+      # 「今日积分」等按本地自然日统计，容器默认 UTC 会导致跨天错位
+      - TZ=Asia/Shanghai
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - JWT_SECRET=${JWT_SECRET:-please-change-this-secret-in-production}
+    volumes:
+      # 飞牛注入的应用数据目录（升级不丢），容器内固定 /app/data
+      - ${TRIM_PKGVAR}/data:/app/data

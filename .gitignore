@@ -1,0 +1,68 @@
+# 依赖
+node_modules
+**/node_modules
+
+# 构建产物
+**/dist
+web/dist
+server/dist
+*.tsbuildinfo
+release/*
+!release/*.bat
+*.apk
+*.fpk
+
+# 运行时数据（含真实家庭数据，绝不上传）
+data
+data-*/
+data-backup-*/
+*.db
+*.db-shm
+*.db-wal
+# 用户上传的图片（小孩照片等），只存在运行时目录里
+**/uploads/
+
+# 环境变量与密钥
+.env
+.env.*
+# 微信支付商户私钥 / 微信支付公钥（compose 只读挂载进容器，绝不入库）
+deploy-cloud/certs/
+
+# 日志
+*.log
+
+# 编辑器 / AI 工具目录
+# .workbuddy 整体不入库（内部工作日志、评审工具与验收脚手架，均非应用源码）
+.trae
+.workbuddy/
+.vscode
+.idea
+
+# FnDepot 源仓库的二进制产物（发布时从 fpk 产物与 docs/screenshots 复制过去）
+deploy/fndepot/*/*.fpk
+deploy/fndepot/*/ICON.PNG
+deploy/fndepot/*/Preview/
+
+# Capacitor / Android 构建产物
+web/android/app/build/
+web/android/build/
+web/android/.gradle/
+web/android/local.properties
+web/android/app/src/main/assets/public/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 本地记录：push-gitee.sh 记住的仓库地址（本机便利文件，不入库）
+.gitee-remote
+# 私有仓库地址（真源）—— 同样只是本机便利文件
+.gitee-cloud-remote
+
+# 发布工作树（publish-oss.sh 用的公开仓库克隆，位于工作区根、不在本仓库内）
+.growtree-oss/
+
+# 子项目的构建产物
+# 这里**不要**再逐条列商业版子目录（miniprogram/dist、admin/dist 之类）：
+# 之前列过，等于在公开仓库的 .gitignore 里点名了这些目录存在。
+# 它们本来就已被上面的 `**/dist` 与 `**/node_modules` 覆盖，列出来是纯冗余。
