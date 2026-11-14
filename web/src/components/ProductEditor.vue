@@ -18,6 +18,10 @@ const { uploading, fileInput, pickImage, onFileChange, ACCEPT } = useImageUpload
 
 const isEdit = computed(() => !!props.product);
 const name = ref('');
+/** 商品类型：goods 礼物（需审核）/ prop 道具（直接入背包，可 0 积分） */
+const kind = ref<'goods' | 'prop'>('goods');
+/** 道具使用说明 */
+const propDesc = ref('');
 const cost = ref(20);
 const stock = ref(-1);
 const unlimited = ref(true);
@@ -69,6 +73,8 @@ watch(() => props.modelValue, (open) => {
     if (categories.value.length === 0) loadCategories();
     if (props.product) {
       name.value = props.product.name;
+      kind.value = props.product.kind === 'prop' ? 'prop' : 'goods';
+      propDesc.value = props.product.prop_desc || '';
       cost.value = props.product.cost;
       stock.value = props.product.stock;
       unlimited.value = props.product.stock === -1;
@@ -83,6 +89,8 @@ watch(() => props.modelValue, (open) => {
       variants.value = vs.map((v: any) => ({ name: v.name, cost: v.cost, stock: v.stock }));
     } else {
       name.value = '';
+      kind.value = 'goods';
+      propDesc.value = '';
       cost.value = 20;
       stock.value = -1;
       unlimited.value = true;
@@ -104,6 +112,10 @@ async function save() {
   if (categoryId.value == null && !image.value) {
     return toast.warning('请选择商品分类，或上传一张商品图片');
   }
+  // 规格暂不支持道具（后端已拦截）
+  if (kind.value === 'prop' && variantsEnabled.value) {
+    return toast.warning('道具类商品暂不支持多规格，请关闭规格开关');
+  }
   if (variantsEnabled.value) {
     if (variants.value.length === 0) return toast.warning('请至少添加一个规格，或关闭规格开关');
     for (const [i, v] of variants.value.entries()) {
@@ -112,7 +124,8 @@ async function save() {
       if (v.stock !== -1 && Number(v.stock) < 0) return toast.warning(`规格「${v.name || i + 1}」的库存不能小于 0（不限量请填 -1）`);
     }
   } else {
-    if (cost.value <= 0) return toast.warning('积分必须大于0');
+    if (kind.value === 'goods' && cost.value <= 0) return toast.warning('礼物类商品积分必须大于 0');
+    if (kind.value === 'prop' && cost.value < 0) return toast.warning('道具积分不能为负数');
     if (!unlimited.value && stock.value < 0) return toast.warning('库存不能小于0');
   }
   if (limitEnabled.value && (limitDays.value < 1 || limitCount.value < 1)) {
@@ -124,6 +137,8 @@ async function save() {
   try {
     const body: Record<string, unknown> = {
       name: name.value.trim(),
+      kind: kind.value,
+      prop_desc: propDesc.value.trim(),
       // 有规格时商品自身的价格/库存只作为兜底值保留
       cost: variantsEnabled.value ? (variants.value[0]?.cost ?? cost.value) : cost.value,
       stock: variantsEnabled.value ? -1 : (unlimited.value ? -1 : stock.value),
@@ -219,10 +234,36 @@ async function onCategoriesChanged() {
         </div>
       </div>
 
-      <!-- ── 3. 商品名称 ────────────────────────────────────────────────── -->
+      <!-- ── 3. 商品类型 ────────────────────────────────────────────────── -->
+      <div class="field">
+        <label class="label">商品类型</label>
+        <div class="kind-row">
+          <label :class="['kind-chip', { active: kind === 'goods' }]">
+            <input v-model="kind" type="radio" value="goods" class="kind-radio" />
+            <span class="kind-emoji">🎁</span>
+            <span class="kind-name">礼物</span>
+            <span class="kind-submit">孩子兑换后需家长审核</span>
+          </label>
+          <label :class="['kind-chip', 'prop-chip', { active: kind === 'prop' }]">
+            <input v-model="kind" type="radio" value="prop" class="kind-radio" />
+            <span class="kind-emoji">🔖</span>
+            <span class="kind-name">道具</span>
+            <span class="kind-submit">兑换即入背包，可免费</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- ── 4. 商品名称 ────────────────────────────────────────────────── -->
       <div class="field">
         <label class="label">商品名称</label>
-        <input v-model="name" type="text" maxlength="50" placeholder="如：冰淇淋一次" />
+        <input v-model="name" type="text" maxlength="50" placeholder="如：冰淇淋一次 / 免周末作业券" />
+      </div>
+
+      <!-- 道具使用说明：仅道具类显示 -->
+      <div v-if="kind === 'prop'" class="field">
+        <label class="label">道具使用说明（选填）</label>
+        <textarea v-model="propDesc" rows="2" maxlength="200"
+          placeholder="例：凭此券可免一次周末作业；使用时请跟爸爸妈妈说一声" />
       </div>
 
       <!-- ── 规格开关：关闭时是单一价格/库存，打开后每个规格各有价格与库存 ── -->
@@ -254,7 +295,8 @@ async function onCategoriesChanged() {
       <template v-else>
         <div class="field">
           <label class="label">所需积分</label>
-          <input v-model.number="cost" type="number" min="1" max="99999" />
+          <input v-model.number="cost" type="number" :min="kind === 'prop' ? 0 : 1" max="99999" />
+          <p v-if="kind === 'prop' && cost === 0" class="hint center">0 积分 = 免费道具，孩子点一下就能进背包</p>
         </div>
         <div class="field">
           <label class="label">
@@ -373,7 +415,28 @@ async function onCategoriesChanged() {
 .img-actions { display: flex; gap: var(--space-8); }
 .img-actions .btn { padding: var(--space-6) var(--space-14); font-size: var(--fs-sm); }
 
-/* ── 规格编辑 ── */
+/* ── 商品类型选择 ── */
+.kind-row { display: flex; gap: var(--space-10); }
+.kind-chip {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: var(--space-10) var(--space-8);
+  border-radius: var(--r-md);
+  background: var(--glass-bg);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--dur-base);
+  font-family: var(--font-cute);
+}
+.kind-chip.active { border-color: var(--accent-yellow); background: rgba(255, 209, 102, 0.15); }
+.kind-chip.prop-chip.active { border-color: rgba(130, 192, 255, 0.8); background: rgba(130, 192, 255, 0.15); }
+.kind-emoji { font-size: 26px; line-height: 1; }
+.kind-name { font-size: var(--fs-md); color: var(--text-primary); }
+.kind-submit { font-size: var(--fs-xs); color: var(--text-muted); }
+.kind-radio { display: none; }
+
+/* ── 商品类型选择 ── */
+
 .variant-box {
   padding: var(--space-10) var(--space-12);
   border-radius: var(--r-md);

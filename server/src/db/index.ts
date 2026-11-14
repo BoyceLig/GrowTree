@@ -365,6 +365,43 @@ function runMigrations(db: Database.Database): void {
     } catch (e) { /* skip */ }
   }
 
+  // 背包（2026-11-13）：商品增加「道具」类型与使用说明。
+  // 老库的 products 是既有表，schema.sql 的 CREATE TABLE IF NOT EXISTS 补不了列。
+  for (const [col, def] of [
+    ['kind', "ALTER TABLE products ADD COLUMN kind TEXT NOT NULL DEFAULT 'goods'"],
+    ['prop_desc', "ALTER TABLE products ADD COLUMN prop_desc TEXT NOT NULL DEFAULT ''"],
+  ] as const) {
+    try {
+      const { c } = db
+        .prepare(`SELECT COUNT(*) as c FROM pragma_table_info('products') WHERE name=?`)
+        .get(col) as { c: number };
+      if (c === 0) {
+        db.exec(def);
+        console.log(`[migration] Added column: products.${col}`);
+      }
+    } catch (e) { /* skip */ }
+  }
+
+  // 背包（2026-11-14）：来源标记 + 拿走不再删除（保留被拿走物品与理由）。
+  // backpack_logs 新表由 schema.sql 的 CREATE TABLE IF NOT EXISTS 直接补上；
+  // 这里只给已存在的 backpack_items 补列。
+  for (const [col, def] of [
+    ['source', "ALTER TABLE backpack_items ADD COLUMN source TEXT NOT NULL DEFAULT 'exchange'"],
+    ['taken_at', 'ALTER TABLE backpack_items ADD COLUMN taken_at INTEGER'],
+    ['take_reason', 'ALTER TABLE backpack_items ADD COLUMN take_reason TEXT'],
+    ['take_refund', 'ALTER TABLE backpack_items ADD COLUMN take_refund INTEGER NOT NULL DEFAULT 0'],
+  ] as const) {
+    try {
+      const { c } = db
+        .prepare(`SELECT COUNT(*) as c FROM pragma_table_info('backpack_items') WHERE name=?`)
+        .get(col) as { c: number };
+      if (c === 0) {
+        db.exec(def);
+        console.log(`[migration] Added column: backpack_items.${col}`);
+      }
+    } catch (e) { /* skip */ }
+  }
+
   // users.skin（2026-10-20）：皮肤选择。NULL = 跟随默认（家长绿 / 孩子按性别）
   try {
     const { c } = db

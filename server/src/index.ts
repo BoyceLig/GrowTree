@@ -20,6 +20,7 @@ import { registerRecurringTasksRoutes } from './routes/recurring-tasks.js';
 import { registerProductsRoutes } from './routes/products.js';
 import { registerProductCategoriesRoutes } from './routes/product-categories.js';
 import { registerExchangeRequestsRoutes } from './routes/exchange-requests.js';
+import { registerBackpackRoutes } from './routes/backpacks.js';
 import { registerWishItemsRoutes } from './routes/wish-items.js';
 import { registerGrowthRoutes } from './routes/growth.js';
 import { registerDiaryRoutes } from './routes/diaries.js';
@@ -97,6 +98,7 @@ async function main() {
     registerProductsRoutes(api);
     registerProductCategoriesRoutes(api);
     registerExchangeRequestsRoutes(api);
+    registerBackpackRoutes(api);
     registerWishItemsRoutes(api);
     registerGrowthRoutes(api);
     registerDiaryRoutes(api);

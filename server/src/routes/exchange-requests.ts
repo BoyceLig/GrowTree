@@ -4,6 +4,7 @@ import { getDb } from '../db/index.js';
 import { requireParent } from '../middleware.js';
 import { getCashRate } from './products.js';
 import { pushToUser, pushToParents, pushToAll } from '../ws.js';
+import { dayEffectFor, effectSuffix, effectInfo, todayLocal } from '../services/dayEffect.js';
 
 const createProductExchangeSchema = z.object({
   type: z.literal('product'),
@@ -35,14 +36,15 @@ export function registerExchangeRequestsRoutes(app: FastifyInstance) {
       const db = getDb();
       // 事务：校验商品+规格+库存+积分余额，写入申请
       let prodResult: any;
+      // 道具类商品：跳过家长审核，直接入背包（不写 exchange_requests，除非 cost > 0 仍走审核）
+      // 免费道具 / 扣 0 分：不入流水，只改库存
       try {
         const txn = db.transaction(() => {
           const product = db.prepare("SELECT * FROM products WHERE id = ? AND status = 'active'").get(productId) as any;
           if (!product) throw new Error('product_not_found');
-          // 许愿专用商品（孩子自己许愿、家长设的礼物）不能走普通兑换：它只能由许愿单领取
           if (product.wish_only === 1) throw new Error('wish_only_product');
 
-          // 规格：该商品若配置了规格，则必须选择其中一个；价格与库存以规格为准
+          // 规格
           const variants = db.prepare(
             'SELECT * FROM product_variants WHERE product_id = ? ORDER BY sort_order ASC, id ASC'
           ).all(productId) as any[];
@@ -57,16 +59,18 @@ export function registerExchangeRequestsRoutes(app: FastifyInstance) {
           const stockLeft = variant ? variant.stock : product.stock;
           if (stockLeft !== -1 && stockLeft <= 0) throw new Error('out_of_stock');
 
-          // 单次限兑件数
           const maxPer = Math.max(1, product.max_per_exchange ?? 1);
           if (quantity > maxPer) throw new Error('exceeds_per_exchange');
 
-          // 限兑校验：每 limit_days 天最多 limit_count 次（含待审核的申请）
+          // 限兑校验（道具也要遵守：避免孩子刷自己的背包）
           if ((product.limit_count ?? 0) > 0 && (product.limit_days ?? 0) > 0) {
             const since = Math.floor(Date.now() / 1000) - product.limit_days * 86400;
+            // 道具限兑需要同时查 exchange_requests（已审核）和 backpack_items（赠送/使用均不增加次数，
+            // 孩子自己兑才计入限兑）—— 我们这里只统计 exchange_requests 里的 product 兑换就够了
             const { c } = db.prepare(`
               SELECT COUNT(*) as c FROM exchange_requests
-              WHERE user_id = ? AND product_id = ? AND status IN ('pending', 'approved') AND created_at > ?
+              WHERE user_id = ? AND product_id = ? AND status IN ('pending', 'approved')
+                AND created_at > ?
             `).get(uid, productId, since) as { c: number };
             if (c >= product.limit_count) throw new Error('limit_reached');
           }
@@ -75,23 +79,91 @@ export function registerExchangeRequestsRoutes(app: FastifyInstance) {
           if (stockLeft !== -1 && stockLeft < quantity) throw new Error('out_of_stock');
 
           const user = db.prepare('SELECT * FROM users WHERE id = ?').get(uid) as any;
-          if (user.total_points < totalCost) throw new Error('insufficient_points');
+          if (totalCost > 0 && user.total_points < totalCost) throw new Error('insufficient_points');
 
+          // ── 道具类商品：直接入背包 ──────────────────────────────────
+          if (product.kind === 'prop') {
+            // 特殊日：消耗按当天倍率折减（道具兑换即扣，按今天算）
+            const effect = dayEffectFor(uid, todayLocal());
+            const finalCost = totalCost > 0 && effect.spendMult !== 1
+              ? Math.max(1, Math.round(totalCost * effect.spendMult))
+              : totalCost;
+            const effectNote = totalCost > 0 && effect.spendMult !== 1 ? effectSuffix(effect, 'spend') : '';
+            if (totalCost > 0) {
+              db.prepare('UPDATE users SET total_points = total_points - ? WHERE id = ?').run(finalCost, uid);
+              db.prepare(`
+                INSERT INTO point_logs (user_id, delta, source, ref_id, note, created_by)
+                VALUES (?, ?, 'exchange', ?, ?, ?)
+              `).run(uid, -finalCost, null, `兑换道具：${product.name}${variant ? `（${variant.name}）` : ''}${effectNote}`, uid);
+            }
+            // 减库存
+            if (variant ? variant.stock !== -1 : product.stock !== -1) {
+              const stmt = variant
+                ? db.prepare('UPDATE product_variants SET stock = stock - ? WHERE id = ? AND stock >= ?')
+                : db.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?');
+              stmt.run(quantity, variant ? variant.id : productId, quantity);
+            }
+            const now = Math.floor(Date.now() / 1000);
+            const ins = db.prepare(`INSERT INTO backpack_items
+              (child_id, product_id, name, icon, description, cost, status, acquired_at, source)
+              VALUES (?, ?, ?, ?, ?, ?, 'unused', ?, 'exchange')`);
+            // 商品图片快照
+            const { icon } = db.prepare(`SELECT COALESCE(NULLIF(p.icon, ''), c.icon, 'gift') AS icon
+              FROM products p LEFT JOIN product_categories c ON c.id = p.category_id WHERE p.id = ?`)
+              .get(productId) as { icon: string };
+            for (let i = 0; i < quantity; i++) {
+              ins.run(uid, productId, product.name, icon, product.prop_desc ?? '', unitCost, now);
+            }
+            // 背包操作记录：孩子兑换入包（家长端「操作历史」可见）
+            db.prepare(`INSERT INTO backpack_logs
+              (child_id, action, item_name, icon, quantity, detail, refund_points, actor_role, actor_label, created_at)
+              VALUES (?, 'exchange', ?, ?, ?, '', 0, 'child', ?, ?)`)
+              .run(uid, product.name, icon, quantity, user.nickname || user.name, now);
+            prodResult = {
+              id: null, // 道具不走 exchange_requests，没有申请 id
+              isProp: true,
+              points: finalCost,
+              quantity,
+              productName: product.name,
+              newBalance: (db.prepare('SELECT total_points FROM users WHERE id = ?').get(uid) as any).total_points,
+            };
+            return;
+          }
+
+          // ── 普通礼物：走审核 ────────────────────────────────────────
           const r = db.prepare(`
             INSERT INTO exchange_requests (user_id, type, product_id, variant_id, variant_name, points, amount, quantity, status)
             VALUES (?, 'product', ?, ?, ?, ?, 0, ?, 'pending')
           `).run(uid, productId, variant ? variant.id : null, variant ? variant.name : null, totalCost, quantity);
           prodResult = {
             id: Number(r.lastInsertRowid),
+            isProp: false,
             points: totalCost,
             quantity,
             productName: product.name,
-            variantName: variant ? variant.name : null,
             product_id: productId,
           };
         });
         txn();
-        // 推送给所有家长：商品兑换申请（与现金兑换保持一致）
+
+        if (prodResult.isProp) {
+          // 道具直接入背包：静默刷新 + 推给家长「已入背包」
+          pushToUser(uid, {
+            type: 'prop_exchanged',
+            itemName: prodResult.productName,
+            quantity: prodResult.quantity,
+            points: prodResult.points,
+            newBalance: prodResult.newBalance,
+          });
+          pushToAll({ type: 'backpack_changed', childId: uid });
+          pushToAll({ type: 'products_changed', action: 'stock', productId });
+          if (prodResult.points > 0) {
+            pushToAll({ type: 'points_changed', userId: uid, delta: -prodResult.points, newBalance: prodResult.newBalance });
+          }
+          return prodResult;
+        }
+
+        // 礼物申请推送给家长
         pushToParents({
           type: 'new_exchange_request',
           requestId: prodResult.id,
@@ -99,7 +171,7 @@ export function registerExchangeRequestsRoutes(app: FastifyInstance) {
           userName: (db.prepare('SELECT name FROM users WHERE id = ?').get(uid) as any)?.name,
           exchangeType: 'product',
           productId: prodResult.product_id,
-          productName: prodResult.variantName ? `${prodResult.productName}（${prodResult.variantName}）` : prodResult.productName,
+          productName: prodResult.productName,
           points: prodResult.points,
         });
         return prodResult;
@@ -208,16 +280,26 @@ export function registerExchangeRequestsRoutes(app: FastifyInstance) {
 
     try {
       let newBalance: number | null = null;
+      let finalCost = 0;
+      let dayEffectInfo: { name: string; emoji: string; mult: number } | null = null;
       const txn = db.transaction(() => {
         const req0 = db.prepare('SELECT * FROM exchange_requests WHERE id = ?').get(id) as any;
         if (!req0) throw new Error('not_found');
         if (req0.status !== 'pending') throw new Error('already_reviewed');
 
-        const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req0.user_id) as any;
-        if (user.total_points < req0.points) throw new Error('insufficient_points');
+        // 特殊日：消耗按当天倍率折减（兑换在过审扣分时结算）
+        const effect = dayEffectFor(req0.user_id, todayLocal());
+        finalCost = req0.points > 0 && effect.spendMult !== 1
+          ? Math.max(1, Math.round(req0.points * effect.spendMult))
+          : req0.points;
+        const effectNote = req0.points > 0 && effect.spendMult !== 1 ? effectSuffix(effect, 'spend') : '';
+        dayEffectInfo = effectInfo(effect, 'spend');
 
-        // 扣积分
-        db.prepare('UPDATE users SET total_points = total_points - ? WHERE id = ?').run(req0.points, req0.user_id);
+        const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req0.user_id) as any;
+        if (user.total_points < finalCost) throw new Error('insufficient_points');
+
+        // 扣积分（折后价）
+        db.prepare('UPDATE users SET total_points = total_points - ? WHERE id = ?').run(finalCost, req0.user_id);
         // 流水里写哪个名字：许愿礼物优先用「心愿卡上的名字」（家长可能改过），
         // 商城兑换还是用商品名 —— 两边指的是同一样东西，但名字未必一样。
         const giftName = (() => {
@@ -232,10 +314,10 @@ export function registerExchangeRequestsRoutes(app: FastifyInstance) {
           INSERT INTO point_logs (user_id, delta, source, ref_id, note, created_by)
           VALUES (?, ?, 'exchange', ?, ?, ?)
         `).run(
-          req0.user_id, -req0.points, req0.id,
+          req0.user_id, -finalCost, req0.id,
           req0.type === 'cash'
-            ? `兑换现金 ${req0.amount}元`
-            : `${req0.wish_id ? '许愿礼物：' : '兑换商品：'}${giftName}${req0.variant_name ? `（${req0.variant_name}）` : ''}`,
+            ? `兑换现金 ${req0.amount}元${effectNote}`
+            : `${req0.wish_id ? '许愿礼物：' : '兑换商品：'}${giftName}${req0.variant_name ? `（${req0.variant_name}）` : ''}${effectNote}`,
           req.user!.sub,
         );
         // 更新申请状态
@@ -261,7 +343,8 @@ export function registerExchangeRequestsRoutes(app: FastifyInstance) {
         requestId: id,
         status: 'approved',
         exchangeType: req0After.type,
-        points: req0After.points,
+        points: finalCost,
+        dayEffect: dayEffectInfo,
         amount: req0After.amount,
         productName: req0After.type === 'product'
           ? `${(db.prepare('SELECT name FROM products WHERE id = ?').get(req0After.product_id) as any)?.name ?? ''}${req0After.variant_name ? `（${req0After.variant_name}）` : ''}`

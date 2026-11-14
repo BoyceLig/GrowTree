@@ -9,6 +9,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import CategoryIcon from '@/components/CategoryIcon.vue';
 import IconLightbox from '@/components/IconLightbox.vue';
 import Modal from '@/components/Modal.vue';
+import BackpackModal from '@/components/BackpackModal.vue';
 import { useShopView } from '@/composables/useShopView';
 import { useCategories } from '@/composables/useCategories';
 
@@ -34,6 +35,9 @@ interface Product {
   name: string;
   cost: number;
   stock: number;
+  /** goods 礼物 / prop 道具 */
+  kind?: 'goods' | 'prop';
+  prop_desc?: string;
   /** 自定义商品图片；'' = 没有单独上传 */
   icon: string;
   /** 后端解析好的展示图片（自定义图片 || 分类图标） */
@@ -64,6 +68,7 @@ const myRequests = ref<Request[]>([]);
 const loading = ref(true);
 const myPoints = computed(() => auth.user?.totalPoints ?? 0);
 const tab = ref<'shop' | 'records'>('shop');
+const backpackOpen = ref(false);
 
 // 现金兑换弹窗
 const cashOpen = ref(false);
@@ -200,6 +205,45 @@ function pickVariant(v: Variant) {
 }
 
 async function exchangeProduct(p: Product) {
+  // 道具类：直接走后端接口（后端会跳过审核、直接入背包）
+  if (p.kind === 'prop') {
+    const qty = Math.max(1, p.max_per_exchange ?? 1);
+    if (myPoints.value < minCost(p) * 1) {
+      return toast.warning(`积分不足，还差 ${minCost(p) - myPoints.value} 分`);
+    }
+    try {
+      const res: any = await api.post('/exchange-requests', {
+        type: 'product',
+        productId: p.id,
+        variantId: null,
+        quantity: 1,
+      });
+      if (res?.isProp) {
+        const label = res.quantity > 1 ? `×${res.quantity}「${res.productName}」` : `「${res.productName}」`;
+        toast.success(
+          res.points > 0
+            ? `兑换成功！扣 ${res.points} 分，${label} 已放进背包 🎒`
+            : `兑换成功！${label} 已放进背包 🎒`
+        );
+      } else {
+        // 旧数据（老商品没 kind 字段，或后端仍按审核走）：走 confirmDialog 兜底
+        return runGoodsExchange(p);
+      }
+      await load();
+      return;
+    } catch (e: any) {
+      const err = e.payload?.error;
+      if (err === 'insufficient_points') toast.error('积分不足');
+      else if (err === 'out_of_stock') toast.error('商品已售罄');
+      else if (err === 'limit_reached') toast.warning('已达限兑次数，过几天再来吧~');
+      else toast.error(e.message);
+      return;
+    }
+  }
+  return runGoodsExchange(p);
+}
+
+function runGoodsExchange(p: Product) {
   if (myPoints.value < minCost(p)) {
     return toast.warning(`积分不足，还差 ${minCost(p) - myPoints.value} 分`);
   }
@@ -372,10 +416,15 @@ watch(
         <h1 class="title">积分商城</h1>
         <p class="subtitle">攒积分，换好礼~</p>
       </div>
-      <div class="points-box">
-        <span class="num">{{ myPoints }}</span>
-        <span class="unit">分</span>
-        <span class="emoji">🌟</span>
+      <div class="header-actions">
+        <button class="bp-entry" @click="backpackOpen = true">
+          🎒 我的背包
+        </button>
+        <div class="points-box">
+          <span class="num">{{ myPoints }}</span>
+          <span class="unit">分</span>
+          <span class="emoji">🌟</span>
+        </div>
       </div>
     </header>
 
@@ -478,13 +527,17 @@ watch(
               @click="openZoom(p)"
             />
             <div class="p-info">
-              <span class="name">{{ p.name }}</span>
+              <span class="name">
+                {{ p.name }}
+                <em v-if="p.kind === 'prop'" class="prop-tag">🔖 道具</em>
+              </span>
               <span class="stock" :class="{ soldout: soldOut(p) }">
                 {{ totalStock(p) === -1 ? '库存不限' : (totalStock(p) === 0 ? '已售罄' : `剩 ${totalStock(p)} 件`) }}
                 <em v-if="hasVariants(p)" class="limit-tag">{{ p.variants!.length }} 档规格可选</em>
                 <em v-if="p.limit_count > 0" class="limit-tag">每{{ p.limit_days }}天限{{ p.limit_count }}次</em>
                 <em v-if="(p.max_per_exchange ?? 1) > 1" class="limit-tag">每次限兑{{ p.max_per_exchange }}件</em>
               </span>
+              <span v-if="p.prop_desc && p.kind === 'prop'" class="spec-line prop-desc">💡 {{ p.prop_desc }}</span>
               <span v-if="hasVariants(p)" class="spec-line">
                 {{ p.variants!.map((v) => `${v.name} ${v.cost}🌟`).join(' / ') }}
               </span>
@@ -493,11 +546,11 @@ watch(
               {{ minCost(p) }}<span v-if="hasVariants(p) && (p.variants!.length > 1)" class="cost-suffix">起</span> 🌟
             </span>
             <button
-              class="btn btn-primary exchange-btn"
+              :class="['btn btn-primary exchange-btn', p.kind === 'prop' ? 'prop-btn' : '']"
               :disabled="myPoints < minCost(p) || soldOut(p)"
               @click="exchangeProduct(p)"
             >
-              {{ soldOut(p) ? '售罄' : (myPoints < minCost(p) ? '🌟不足' : (hasVariants(p) ? '选规格' : '兑换')) }}
+              {{ soldOut(p) ? '售罄' : (myPoints < minCost(p) ? '🌟不足' : (p.kind === 'prop' ? '兑换道具' : '兑换')) }}
             </button>
           </GlassCard>
         </div>
@@ -623,6 +676,9 @@ watch(
 
     <!-- 图标放大预览 -->
     <IconLightbox v-model="zoomOpen" :icon="zoomIcon" :name="zoomName" />
+
+    <!-- 我的背包 -->
+    <BackpackModal v-model="backpackOpen" />
   </div>
 </template>
 
@@ -636,9 +692,23 @@ watch(
   justify-content: space-between;
   align-items: center;
   margin-bottom: var(--space-16);
+  gap: var(--space-12);
 }
 .title { font-size: var(--fs-3xl); margin-bottom: var(--space-2); }
 .subtitle { color: var(--text-secondary); font-size: var(--fs-sm); }
+.header-actions { display: flex; align-items: center; gap: var(--space-10); flex-shrink: 0; }
+.bp-entry {
+  padding: var(--space-8) var(--space-14);
+  border-radius: var(--r-md);
+  background: linear-gradient(135deg, rgba(130, 192, 255, 0.25), rgba(80, 144, 220, 0.15));
+  border: 1px solid rgba(130, 192, 255, 0.45);
+  color: var(--text-on-sky);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all var(--dur-fast);
+}
+.bp-entry:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(80, 144, 220, 0.3); }
 .points-box {
   background: linear-gradient(135deg, var(--accent-yellow), var(--accent-orange));
   padding: var(--space-8) var(--space-16);
@@ -882,7 +952,30 @@ watch(
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex; align-items: center; gap: var(--space-6);
 }
+.prop-tag {
+  font-style: normal;
+  font-size: var(--fs-2xs);
+  padding: 1px 6px;
+  border-radius: var(--r-2xs);
+  background: rgba(130, 192, 255, 0.22);
+  color: var(--text-on-sky);
+  flex-shrink: 0;
+}
+.prop-desc {
+  font-size: var(--fs-xs) !important;
+  color: var(--text-secondary) !important;
+  line-height: 1.4;
+  white-space: normal !important;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.prop-btn { background: linear-gradient(135deg, #7ec9ff, #4a94d8); color: #fff; }
+.prop-btn:disabled { opacity: 0.5; }
 .p-info .stock {
   font-size: var(--fs-xs);
   color: var(--text-muted);

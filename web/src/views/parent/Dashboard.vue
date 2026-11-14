@@ -9,6 +9,7 @@ import EmptyState from '@/components/EmptyState.vue';
 import AccountManagerModal from '@/components/AccountManagerModal.vue';
 import Modal from '@/components/Modal.vue';
 import TreeHoleBox from '@/components/TreeHoleBox.vue';
+import BackpackModal from '@/components/BackpackModal.vue';
 
 const router = useRouter();
 
@@ -43,6 +44,14 @@ const logsOpen = ref(false);
 const logsChild = ref<ChildCard | null>(null);
 const logs = ref<Log[]>([]);
 const logsLoading = ref(false);
+
+// 孩子背包弹窗（家长模式：可查看 + 拿走道具）
+const backpackOpen = ref(false);
+const backpackChild = ref<ChildCard | null>(null);
+function openBackpack(c: ChildCard) {
+  backpackChild.value = c;
+  backpackOpen.value = true;
+}
 
 const sortedChildren = computed(() => {
   const list = data.value?.children ?? [];
@@ -196,12 +205,24 @@ onUnmounted(() => {
           <span class="num">{{ c.total_points }}</span>
           <span class="unit">分</span>
         </div>
+        <!-- 背包入口：emoji + 文字，点这里看孩子背包，不触发整卡的积分记录 -->
+        <button class="bp-entry" title="查看孩子的背包：可赠送物品、拿走道具" @click.stop="openBackpack(c)">
+          <span class="bp-entry-icon">🎒</span>
+          <span class="bp-entry-text">背包</span>
+        </button>
       </GlassCard>
     </div>
 
     <AccountManagerModal
       v-model="accountOpen"
       @changed="load"
+    />
+
+    <!-- 孩子背包弹窗（家长模式：可查看 + 拿走道具） -->
+    <BackpackModal
+      v-model="backpackOpen"
+      :child-id="backpackChild?.id"
+      :child-name="backpackChild?.name"
     />
 
     <!-- 积分记录弹窗 -->
@@ -311,6 +332,29 @@ onUnmounted(() => {
 
 .points {
   text-align: right;
+}
+/* 背包入口按钮：emoji + 文字，放在积分右侧，独立可点（阻止冒泡避免误开积分记录） */
+.bp-entry {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 52px;
+  padding: var(--space-8) var(--space-10);
+  margin-left: var(--space-4);
+  border-radius: var(--r-md);
+  background: rgba(130, 192, 255, 0.18);
+  border: 1px solid rgba(130, 192, 255, 0.4);
+  cursor: pointer;
+  transition: all var(--dur-fast);
+}
+.bp-entry-icon { font-size: 20px; line-height: 1; }
+.bp-entry-text { font-size: var(--fs-2xs); color: var(--text-on-sky); font-weight: 600; }
+.bp-entry:hover {
+  transform: translateY(-2px);
+  background: rgba(130, 192, 255, 0.3);
+  box-shadow: 0 4px 10px rgba(80, 144, 220, 0.25);
 }
 .points .num {
   font-size: var(--fs-3xl);

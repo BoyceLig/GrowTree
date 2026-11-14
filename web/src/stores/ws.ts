@@ -184,6 +184,31 @@ export function useWsStore() {
       window.dispatchEvent(new CustomEvent('ws:products_changed', { detail: msg }));
     }
 
+    // 背包变化：静默刷新（孩子端商城的背包弹窗、家长端看背包的地方）
+    if (msg.type === 'backpack_changed') {
+      window.dispatchEvent(new CustomEvent('ws:backpack_changed', { detail: msg }));
+    }
+    // 家长赠送道具 → 给孩子弹 toast
+    if (msg.type === 'backpack_gifted' && auth.user?.role === 'child' && msg.parentLabel) {
+      const qty = Number(msg.quantity ?? 1);
+      const label = qty > 1 ? `${msg.itemName} ×${qty}` : msg.itemName;
+      const reason = msg.reason ? `（${msg.reason}）` : '';
+      toast.info(`🎒 ${msg.parentLabel} 送了你「${label}」${reason}，已放进背包，去看看吧~`);
+      window.dispatchEvent(new CustomEvent('ws:backpack_changed', { detail: msg }));
+    }
+    // 家长拿走道具 → 给孩子弹 toast + 可能涉及积分返还
+    if (msg.type === 'backpack_taken' && auth.user?.role === 'child' && msg.parentLabel) {
+      const refund = Number(msg.refundPoints ?? 0);
+      const refundTxt = refund > 0 ? `，返还积分 +${refund} 分` : '';
+      toast.warning(
+        `🗑️ ${msg.parentLabel} 拿走了你的「${msg.itemName}」${refundTxt}。理由：${msg.reason || '—'}`
+      );
+      window.dispatchEvent(new CustomEvent('ws:backpack_changed', { detail: msg }));
+      if (refund > 0) {
+        window.dispatchEvent(new CustomEvent('ws:points_changed', { detail: msg }));
+      }
+    }
+
     // 积分项目被新建/编辑/删除（另一个家长的操作）→ 积分页重拉。
     // 少了这一条，两个人同时开着积分页时，后动手的那个会对着已经不存在的项目
     // 点删除，拿到「项目不存在」——提示没错，但本来不该让他点到。

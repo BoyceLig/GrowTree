@@ -144,6 +144,10 @@ CREATE TABLE IF NOT EXISTS products (
   -- 1 = 只属于许愿单商品（家长完善心愿时选择「不加入商城」，或商品直接归入「许愿单」分类），
   -- 孩子端商城不展示
   wish_only INTEGER NOT NULL DEFAULT 0,
+  -- 商品类型（2026-11-13）：goods = 普通礼物，走兑换申请 + 家长审核；
+  -- prop = 道具（如打折券、免作业券），孩子兑换后直接进背包，可随时使用
+  kind TEXT NOT NULL DEFAULT 'goods' CHECK (kind IN ('goods', 'prop')),
+  prop_desc TEXT NOT NULL DEFAULT '',  -- 道具使用说明，仅 kind='prop' 有意义
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
@@ -186,6 +190,52 @@ CREATE INDEX IF NOT EXISTS idx_product_variants_product ON product_variants(prod
 
 CREATE INDEX IF NOT EXISTS idx_exchange_requests_status ON exchange_requests(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_exchange_requests_user ON exchange_requests(user_id, created_at DESC);
+
+-- 背包（2026-11-13）：孩子兑换道具后直接存入这里，可以随时「使用」。
+-- 道具属于孩子本人，家长端只读查看。商品名/图标/说明在下单时快照一份，
+-- 之后家长改商品或删除商品都不会影响背包里的东西。
+--   status = unused 未使用；used 已使用（保留历史，不删除）
+-- 2026-11-14：拿走不再删除行，改用 taken_at 标记，保留被拿走物品与理由；
+--   source 区分来源（exchange 孩子兑换 / gift 家长赠送）。
+--   status 的 CHECK 保持不变（老库无法改 CHECK），拿走状态用 taken_at 表达。
+CREATE TABLE IF NOT EXISTS backpack_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  child_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,                 -- 兑换时的道具名快照
+  icon TEXT NOT NULL DEFAULT '',      -- 兑换时的展示图标快照（自定义图片路径或分类图标 key）
+  description TEXT NOT NULL DEFAULT '', -- 兑换时的使用说明快照
+  cost INTEGER NOT NULL DEFAULT 0,    -- 兑换时消耗的积分（0 = 免费）
+  status TEXT NOT NULL DEFAULT 'unused' CHECK (status IN ('unused', 'used')),
+  acquired_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  used_at INTEGER,
+  use_note TEXT,                      -- 使用时的备注（可空）
+  source TEXT NOT NULL DEFAULT 'exchange', -- exchange = 孩子自己兑换；gift = 家长赠送
+  taken_at INTEGER,                   -- 非 NULL = 已被家长拿走（行保留，不再 DELETE）
+  take_reason TEXT,                   -- 拿走理由快照
+  take_refund INTEGER NOT NULL DEFAULT 0 -- 拿走时返还给孩子的积分
+);
+
+CREATE INDEX IF NOT EXISTS idx_backpack_items_child ON backpack_items(child_id, status, acquired_at DESC);
+
+-- 背包操作记录（2026-11-14）：家长端背包弹窗的历史记录，按孩子倒序。
+--   action = gift 家长赠送 / exchange 孩子兑换入包 / use 孩子使用 / take 家长拿走
+--   物品名/图标快照，不随 backpack_items 变化；建表前的历史操作没有记录。
+CREATE TABLE IF NOT EXISTS backpack_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  child_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  action TEXT NOT NULL CHECK (action IN ('gift', 'exchange', 'use', 'take')),
+  item_name TEXT NOT NULL,
+  icon TEXT NOT NULL DEFAULT '',
+  quantity INTEGER NOT NULL DEFAULT 1,
+  detail TEXT NOT NULL DEFAULT '',    -- 赠送理由 / 拿走理由 / 使用备注
+  refund_points INTEGER NOT NULL DEFAULT 0, -- take 时返还的积分
+  actor_role TEXT NOT NULL DEFAULT 'parent', -- parent / child
+  actor_label TEXT NOT NULL DEFAULT '',      -- 操作人展示名（如「爸爸」）
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_backpack_logs_child ON backpack_logs(child_id, created_at DESC);
 
 -- 成长记录（身高体重）
 -- 同一天同一孩子只保留一条：重复录入按更新处理，避免"随时想量就量"产生脏数据
@@ -354,4 +404,33 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
   updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+-- 特殊日（2026-11-14）：家长专属，重复规则 + 当天积分效果（获得倍率/消耗倍率）。
+--   rule_type = once 单天 / weekly 每周几 / monthly 每月几号 / yearly 每年几月几号
+--   weekdays 1=周一…7=周日；month_days 1-31（小月自动跳过）；yearly_md 'MM-DD'
+--   effect_kind = earn 获得（倍率>1）/ spend 消耗（倍率<1）；NULL = 纯纪念日无积分效果
+CREATE TABLE IF NOT EXISTS special_days (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  emoji TEXT NOT NULL DEFAULT '🎉',
+  rule_type TEXT NOT NULL CHECK (rule_type IN ('once', 'weekly', 'monthly', 'yearly')),
+  once_date TEXT,
+  weekdays TEXT,
+  month_days TEXT,
+  yearly_md TEXT,
+  range_start TEXT,
+  range_end TEXT,
+  scope TEXT NOT NULL DEFAULT 'all' CHECK (scope IN ('all', 'custom')),
+  effect_kind TEXT CHECK (effect_kind IN ('earn', 'spend')),
+  effect_value REAL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE TABLE IF NOT EXISTS special_day_targets (
+  special_day_id INTEGER NOT NULL REFERENCES special_days(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (special_day_id, user_id)
 );

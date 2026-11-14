@@ -23,7 +23,8 @@ const variantSchema = z.object({
 
 const createSchema = z.object({
   name: z.string().min(1).max(50),
-  cost: z.number().int().positive(),
+  // 道具允许 0 积分（免费）；普通商品在 handler 里再强制 > 0
+  cost: z.number().int().min(0),
   stock: z.number().int().default(-1), // -1 = 无限
   icon: imageSchema.default(''),       // 自定义商品图片；'' = 用分类图标
   category_id: z.number().int().positive().nullable().default(null),
@@ -38,13 +39,16 @@ const createSchema = z.object({
   wish_daily_count: z.number().int().min(0).max(99).default(0),
   // 1 = 许愿专用商品（不进孩子端商城）
   wish_only: z.number().int().min(0).max(1).default(0),
+  /** goods = 普通礼物（需家长审核）；prop = 道具（兑换即入背包，可免费） */
+  kind: z.enum(['goods', 'prop']).default('goods'),
+  prop_desc: z.string().max(200).default(''),
   variants: z.array(variantSchema).max(VARIANT_MAX).nullable().optional(), // 规格列表；空/NULL = 无规格
   status: z.enum(['active', 'inactive']).default('active'),
 });
 
 const updateSchema = z.object({
   name: z.string().min(1).max(50).optional(),
-  cost: z.number().int().positive().optional(),
+  cost: z.number().int().min(0).optional(),
   stock: z.number().int().optional(),
   icon: imageSchema.optional(),
   category_id: z.number().int().positive().nullable().optional(),
@@ -56,6 +60,8 @@ const updateSchema = z.object({
   wish_consecutive: z.number().int().min(0).max(1).optional(),
   wish_daily_count: z.number().int().min(0).max(99).optional(),
   wish_only: z.number().int().min(0).max(1).optional(),
+  kind: z.enum(['goods', 'prop']).optional(),
+  prop_desc: z.string().max(200).optional(),
   variants: z.array(variantSchema).max(VARIANT_MAX).nullable().optional(),
   status: z.enum(['active', 'inactive']).optional(),
 });
@@ -168,16 +174,24 @@ export function registerProductsRoutes(app: FastifyInstance) {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const { name, cost, stock, icon, category_id, limit_days, limit_count, max_per_exchange, variants, status,
-      wish_enabled, wish_days, wish_consecutive, wish_daily_count, wish_only } = parsed.data;
+      wish_enabled, wish_days, wish_consecutive, wish_daily_count, wish_only, kind, prop_desc } = parsed.data;
+    // 普通礼物积分必须 > 0；道具允许 0 积分（免费）
+    if (kind === 'goods' && cost <= 0) {
+      return reply.code(400).send({ error: 'invalid_input', detail: '礼物类商品积分必须大于 0' });
+    }
     const db = getDb();
     // 放进隐藏分类（「许愿单」）= 只能许愿领取，孩子端商城不展示
     const onlyWish = categoryHidden(category_id) ? 1 : wish_only;
     // 只能许愿领取的商品如果又不允许许愿，那它两边都看不到 —— 强制打开
     const wishEnabled = onlyWish === 1 ? 1 : wish_enabled;
-    const r = db.prepare('INSERT INTO products (name, cost, stock, icon, category_id, limit_days, limit_count, max_per_exchange, wish_enabled, wish_days, wish_consecutive, wish_daily_count, wish_only, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(name, cost, stock, icon, category_id, limit_days, limit_count, max_per_exchange, wishEnabled, wish_days, wish_consecutive, wish_daily_count, onlyWish, status);
+    const r = db.prepare(`INSERT INTO products
+      (name, cost, stock, icon, category_id, limit_days, limit_count, max_per_exchange,
+       wish_enabled, wish_days, wish_consecutive, wish_daily_count, wish_only, kind, prop_desc, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(name, cost, stock, icon, category_id, limit_days, limit_count, max_per_exchange,
+        wishEnabled, wish_days, wish_consecutive, wish_daily_count, onlyWish, kind, prop_desc, status);
     const id = Number(r.lastInsertRowid);
     replaceVariants(id, variants ?? null);
-    // 商品变了 → 两端商城页静默重拉（孩子端不用刷新就能看到新商品）
     pushToAll({ type: 'products_changed', action: 'created', productId: id });
     return { id };
   });
@@ -192,6 +206,15 @@ export function registerProductsRoutes(app: FastifyInstance) {
     // 先记下旧的许愿考核标准：有没有真的改过，决定要不要传导到进行中的心愿
     const before = db.prepare('SELECT wish_days, wish_consecutive, wish_daily_count FROM products WHERE id = ?')
       .get(id) as { wish_days: number; wish_consecutive: number; wish_daily_count: number } | undefined;
+    // 当前商品类型：用于 goods/props 切换时校验 cost
+    const currentKind = db.prepare('SELECT kind, cost FROM products WHERE id = ?')
+      .get(id) as { kind: string; cost: number } | undefined;
+    if (!currentKind) return reply.code(404).send({ error: 'not_found' });
+    const nextKind = u.kind ?? currentKind.kind;
+    const nextCost = u.cost ?? currentKind.cost;
+    if (nextKind === 'goods' && nextCost <= 0) {
+      return reply.code(400).send({ error: 'invalid_input', detail: '礼物类商品积分必须大于 0' });
+    }
     // category_id 用「是否传了字段」判断而不是 COALESCE：null 是合法值（移出分类）
     const categoryGiven = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'category_id');
     // 分类决定「会不会出现在孩子端商城」：挪进隐藏分类 → 强制只能许愿领取；挪出来 → 恢复正常
@@ -213,6 +236,8 @@ export function registerProductsRoutes(app: FastifyInstance) {
         wish_consecutive = COALESCE(?, wish_consecutive),
         wish_daily_count = COALESCE(?, wish_daily_count),
         wish_only = COALESCE(?, wish_only),
+        kind = COALESCE(?, kind),
+        prop_desc = COALESCE(?, prop_desc),
         status = COALESCE(?, status),
         is_preset = 0
       WHERE id = ?
@@ -222,6 +247,7 @@ export function registerProductsRoutes(app: FastifyInstance) {
       u.limit_days ?? null, u.limit_count ?? null, u.max_per_exchange ?? null,
       u.wish_enabled ?? wishEnabledNext, u.wish_days ?? null, u.wish_consecutive ?? null, u.wish_daily_count ?? null,
       wishOnlyNext,
+      u.kind ?? null, u.prop_desc ?? null,
       u.status ?? null, id
     );
     if (r.changes === 0) return reply.code(404).send({ error: 'not_found' });

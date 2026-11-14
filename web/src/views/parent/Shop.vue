@@ -10,10 +10,13 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import CategoryIcon from '@/components/CategoryIcon.vue';
 import IconLightbox from '@/components/IconLightbox.vue';
 import Modal from '@/components/Modal.vue';
+import GiftModal from '@/components/GiftModal.vue';
 import { useShopView } from '@/composables/useShopView';
 import { useCategories } from '@/composables/useCategories';
+import { useAuthStore } from '@/stores/auth';
 
 const toast = useToastStore();
+const auth = useAuthStore();
 
 /** 显示样式：列表 / 网格（偏好存本地，下次进入沿用） */
 const { view } = useShopView('parent');
@@ -31,6 +34,9 @@ interface Product {
   name: string;
   cost: number;
   stock: number;
+  /** goods 礼物 / prop 道具 */
+  kind?: 'goods' | 'prop';
+  prop_desc?: string;
   /** 自定义商品图片；'' = 没有单独上传 */
   icon: string;
   /** 后端解析好的展示图片（自定义图片 || 分类图标） */
@@ -53,6 +59,8 @@ const products = ref<Product[]>([]);
 const loading = ref(true);
 const editorOpen = ref(false);
 const editing = ref<Product | null>(null);
+const giftOpen = ref(false);
+const giftProduct = ref<Product | null>(null);
 
 // 现金兑换汇率
 const cashRate = ref(10);
@@ -191,6 +199,17 @@ function priceRange(p: Product): string {
 async function onSaved() {
   editorOpen.value = false;
   await load();
+}
+
+function openGift(p: Product) {
+  giftProduct.value = p;
+  giftOpen.value = true;
+  closeMenu(); // 赠送弹窗打开时自动收起下拉菜单
+}
+
+function onGifted() {
+  // 赠送成功后静默刷新（库存可能变了）
+  load(true);
 }
 
 async function toggleStatus(p: Product) {
@@ -366,6 +385,8 @@ watch(
           />
           <div class="row-name">
             <span class="name-text">{{ p.name }}</span>
+            <span v-if="p.kind === 'prop'" class="tag prop">🔖 道具</span>
+            <span v-if="p.kind === 'goods'" class="tag gift">🎁 礼物</span>
             <span v-if="p.status === 'inactive'" class="tag off">已下架</span>
             <span v-if="p.variants?.length" class="tag spec">{{ p.variants.length }} 档规格</span>
             <span v-if="view === 'list' && p.category_name" class="tag cat">{{ p.category_name }}</span>
@@ -402,6 +423,9 @@ watch(
               <button class="menu-item" @click="openEditor(p)">
                 <span class="mi-icon">✏️</span> 编辑
               </button>
+              <button class="menu-item" @click="openGift(p)">
+                <span class="mi-icon">🎁</span> 赠送孩子
+              </button>
               <button class="menu-item" @click="toggleStatus(p)">
                 <span class="mi-icon">{{ p.status === 'active' ? '📥' : '📤' }}</span>
                 {{ p.status === 'active' ? '下架' : '上架' }}
@@ -416,6 +440,13 @@ watch(
     </template>
 
     <ProductEditor v-if="editorOpen" v-model="editorOpen" :product="editing" @saved="onSaved" />
+
+    <GiftModal
+      v-if="giftOpen"
+      v-model="giftOpen"
+      :product="giftProduct"
+      @gifted="onGifted"
+    />
 
     <CategoryManagerModal v-model="categoryManagerOpen" @changed="load" />
 
@@ -725,6 +756,8 @@ watch(
   padding: var(--space-2) var(--space-8);
   border-radius: var(--r-2xs);
 }
+.tag.prop { background: rgba(130, 192, 255, 0.22); color: var(--text-on-sky); }
+.tag.gift { background: rgba(255, 209, 102, 0.22); color: var(--text-on-yellow); }
 
 .row-cost {
   flex-shrink: 0;
