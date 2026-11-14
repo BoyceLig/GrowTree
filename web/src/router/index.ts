@@ -36,7 +36,15 @@ const router = createRouter({
         { path: 'growth/detail', name: 'child-growth-detail', component: () => import('@/views/child/GrowthDetail.vue') },
       ],
     },
-    { path: '/', redirect: '/login' },
+    {
+      path: '/',
+      redirect: () => {
+        const auth = useAuthStore();
+        if (auth.hasParent) return '/parent';
+        if (auth.hasChild) return '/child';
+        return '/login';
+      },
+    },
     { path: '/:pathMatch(.*)*', redirect: '/login' },
   ],
 });
@@ -44,15 +52,15 @@ const router = createRouter({
 router.beforeEach((to) => {
   const auth = useAuthStore();
   const role = to.meta.role as 'parent' | 'child' | undefined;
-  if (role && !auth.isAuthenticated) {
-    return { name: 'login' };
+
+  // 家长和孩子各有一份登录态：进哪个端就用哪份 token
+  if (role) {
+    if (!auth.activate(role)) return { name: 'login', query: { role } };
+    return;
   }
-  if (role && auth.user?.role && role !== auth.user.role) {
-    return { name: auth.user.role === 'parent' ? 'parent-dashboard' : 'child-home' };
-  }
-  if (to.name === 'login' && auth.isAuthenticated) {
-    return { name: auth.user!.role === 'parent' ? 'parent-dashboard' : 'child-home' };
-  }
+
+  // 登录页不踢已登录的人：方便在同一个浏览器里再登另一个身份
+  if (to.name === 'login') auth.activate(null);
 });
 
 export default router;

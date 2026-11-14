@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { getZodiac } from '@/utils/zodiac';
 
 const props = withDefaults(defineProps<{
@@ -12,9 +12,25 @@ const props = withDefaults(defineProps<{
 });
 
 const z = computed(() => getZodiac(props.zodiac));
+/** 家长自定义头像：/uploads/xxx；生肖 key 则继续用 emoji */
+const photoFailed = ref(false);
+watch(() => props.zodiac, () => { photoFailed.value = false; });
+const isPhoto = computed(() =>
+  !!props.zodiac && props.zodiac.startsWith('/uploads/') && !photoFailed.value
+);
 const style = computed(() => {
   const s = props.size;
   const fontSize = Math.floor(s * 0.78);
+  if (isPhoto.value) {
+    return {
+      width: `${s}px`,
+      height: `${s}px`,
+      background: '#fff',
+      boxShadow: props.showRing
+        ? '0 0 0 4px #ffffffaa, 0 0 0 7px rgba(240, 160, 90, 0.55), 0 8px 24px rgba(120, 80, 40, 0.18)'
+        : '0 4px 16px rgba(120, 80, 40, 0.18), inset 0 1px 2px rgba(255,255,255,0.5)',
+    } as Record<string, string>;
+  }
   return {
     width: `${s}px`,
     height: `${s}px`,
@@ -29,7 +45,8 @@ const style = computed(() => {
 
 <template>
   <div class="zodiac-avatar" :style="style">
-    <span class="emoji">{{ z.emoji }}</span>
+    <img v-if="isPhoto" class="photo" :src="zodiac" alt="" @error="photoFailed = true" />
+    <span v-else class="emoji">{{ z.emoji }}</span>
   </div>
 </template>
 
@@ -52,5 +69,12 @@ const style = computed(() => {
   font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif;
   /* 同 B1 的判据：纯黑在粉调玻璃上发脏，改用主文字色相 */
   filter: drop-shadow(0 1px 2px rgba(90, 58, 74, 0.22));
+}
+.photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
 }
 </style>

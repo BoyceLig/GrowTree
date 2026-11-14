@@ -11,7 +11,11 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL CHECK (role IN ('parent', 'child')),
   pin TEXT,                          -- 小孩登录PIN（4-6位数字），家长账号为NULL
   password_hash TEXT,                 -- 家长密码哈希，小孩为NULL
-  avatar TEXT,                        -- 生肖key，如 "rat"
+  avatar TEXT,                        -- 生肖key，如 "rat"；家长也可是 /uploads/xxx 自定义头像
+  -- 家长资料（2026-11-12 多家长账号）：孩子账号这三列为 NULL / 0
+  nickname TEXT,                      -- 家长昵称，用于界面展示
+  parent_identity TEXT,               -- 家长身份：妈妈/爸爸/奶奶… 或用户自定义（不限枚举）
+  is_primary INTEGER NOT NULL DEFAULT 0,  -- 1=主家长（唯一），只有主家长能管理家长账号
   birthday TEXT,                      -- 出生日期 YYYY-MM-DD，生长曲线需按年龄查标准
   sex TEXT CHECK (sex IN ('male', 'female')),  -- 性别，生长标准男女不同；NULL=未填写
   -- 成长日记对该孩子的可见开关（家长按孩子单独控制）：1=孩子能看到，0=只有家长能看

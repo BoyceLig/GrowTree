@@ -93,7 +93,7 @@ async function loginParent() {
   loadingParent.value = true;
   try {
     await auth.parentLogin(username.value.trim(), password.value);
-    toast.success(`欢迎回来，${auth.user?.name}！`);
+    toast.success(`欢迎回来，${auth.user?.nickname || auth.user?.name}！`);
     router.replace({ name: 'parent-dashboard' });
   } catch (e: any) {
     toast.error(e.message || '登录失败');
@@ -135,6 +135,26 @@ async function loginChild() {
         <img class="logo" src="/growtree.png" alt="成长树" />
         <h1 class="title">成长树</h1>
         <p class="subtitle">GrowTree · 家庭积分管家</p>
+      </div>
+
+      <!-- 同一个浏览器可以同时保留家长和孩子两份登录态 -->
+      <div v-if="auth.hasParent || auth.hasChild" class="session-bar">
+        <span v-if="auth.hasParent" class="session-chip">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="8" cy="5" r="2.6" />
+            <path d="M2.8 13.5c0-2.6 2.3-4.3 5.2-4.3s5.2 1.7 5.2 4.3" />
+          </svg>
+          家长已登录
+          <button type="button" @click="router.push('/parent')">进入家长端</button>
+        </span>
+        <span v-if="auth.hasChild" class="session-chip">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="8" cy="5" r="2.6" />
+            <path d="M2.8 13.5c0-2.6 2.3-4.3 5.2-4.3s5.2 1.7 5.2 4.3" />
+          </svg>
+          孩子已登录
+          <button type="button" @click="router.push('/child')">进入孩子端</button>
+        </span>
       </div>
 
       <!-- 服务器连接配置（仅 App 显示，网页端走同源不需要配置） -->
@@ -306,6 +326,41 @@ async function loginChild() {
 .subtitle {
   color: var(--text-secondary);
   font-size: var(--fs-sm);
+}
+
+/* 同浏览器多身份：已登录的家长/孩子可以一键切回去 */
+.session-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  margin-bottom: var(--space-12);
+}
+.session-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-10);
+  border-radius: var(--r-pill);
+  background: rgba(126, 212, 185, 0.14);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+}
+.session-chip svg {
+  width: 14px;
+  height: 14px;
+  color: var(--text-on-mint);
+  flex-shrink: 0;
+}
+.session-chip button {
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-on-mint);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
 }
 
 .tabs {

@@ -4,6 +4,8 @@ import { api } from '@/api/client';
 import { useToastStore } from '@/stores/toast';
 import Modal from '@/components/Modal.vue';
 import ZodiacAvatar from '@/components/ZodiacAvatar.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import BackButton from '@/components/BackButton.vue';
 import { ZODIACS } from '@/utils/zodiac';
 
 const props = defineProps<{
@@ -59,6 +61,31 @@ function reset() {
 // 不加 immediate 回调永远不会触发 → 编辑时表单一片空白、被迫每项重填。
 watch(() => props.modelValue, (open) => { if (open) reset(); }, { immediate: true });
 
+/** 和打开时的快照比，判断有没有未保存修改（PIN 只能新填，填了就算改动） */
+const dirty = computed(() => {
+  if (name.value.trim() !== initial.value.name) return true;
+  if (avatar.value !== initial.value.avatar) return true;
+  if (birthday.value !== initial.value.birthday) return true;
+  if (sex.value !== initial.value.sex) return true;
+  return pin.value !== '';
+});
+
+const discardOpen = ref(false);
+
+/** 点返回：有改动先确认，没改动直接关 */
+function requestClose() {
+  if (dirty.value) {
+    discardOpen.value = true;
+    return;
+  }
+  emit('update:modelValue', false);
+}
+
+function confirmDiscard() {
+  discardOpen.value = false;
+  emit('update:modelValue', false);
+}
+
 async function save() {
   if (!name.value.trim()) return toast.warning('请输入小朋友名字');
   if (!pin.value && !isEdit.value) return toast.warning('请设置PIN码');
@@ -113,6 +140,10 @@ async function save() {
 
 <template>
   <Modal :model-value="modelValue" :title="isEdit ? '编辑小朋友' : '新增小朋友'" @update:model-value="emit('update:modelValue', $event)">
+    <div class="back-row">
+      <BackButton label="返回孩子账号列表" @click="requestClose" />
+    </div>
+
     <div class="form">
       <div class="field">
         <label class="label">生肖头像</label>
@@ -177,8 +208,17 @@ async function save() {
       </div>
     </div>
 
+    <ConfirmDialog
+      v-model="discardOpen"
+      variant="danger"
+      title="未保存的修改"
+      message="当前页有未保存的修改，返回后将全部丢弃。确定返回吗？"
+      confirm-text="放弃修改"
+      cancel-text="继续编辑"
+      @confirm="confirmDiscard"
+    />
+
     <template #footer>
-      <button class="btn btn-ghost" @click="emit('update:modelValue', false)">取消</button>
       <button class="btn btn-primary" @click="save" :disabled="saving">
         {{ saving ? '保存中...' : '保存' }}
       </button>
@@ -187,6 +227,9 @@ async function save() {
 </template>
 
 <style scoped>
+.back-row {
+  margin-bottom: var(--space-16);
+}
 .form {
   display: flex;
   flex-direction: column;

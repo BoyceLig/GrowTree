@@ -25,7 +25,9 @@ export async function request<T = any>(
     headers,
   });
 
-  if (res.status === 401) {
+  // 登录接口的 401 是账号/密码错误，不能把已有身份踢下线
+  const isLoginCall = path === '/auth/parent-login' || path === '/auth/child-login';
+  if (res.status === 401 && !isLoginCall) {
     auth.logout();
     throw new Error('未登录或登录已过期');
   }

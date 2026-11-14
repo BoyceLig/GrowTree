@@ -427,8 +427,129 @@ function runMigrations(db: Database.Database): void {
     }
   } catch (e) { /* skip */ }
 
+  // users.nickname / parent_identity / is_primary（2026-11-12 多家长账号）
+  // 孩子账号保持 NULL / 0；老库里的家长按「第一个家长=主账号」平滑升级，
+  // 昵称先沿用账号名，身份先给一个默认值（主账号登录后可自己改）。
+  for (const [col, def] of [
+    ['nickname', 'ALTER TABLE users ADD COLUMN nickname TEXT'],
+    ['parent_identity', 'ALTER TABLE users ADD COLUMN parent_identity TEXT'],
+    ['is_primary', 'ALTER TABLE users ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0'],
+  ] as const) {
+    try {
+      const { c } = db
+        .prepare(`SELECT COUNT(*) as c FROM pragma_table_info('users') WHERE name=?`)
+        .get(col) as { c: number };
+      if (c === 0) {
+        db.exec(def);
+        console.log(`[migration] Added column: users.${col}`);
+      }
+    } catch (e) { /* skip */ }
+  }
+
+  // 早期版本 parent_identity 只允许 dad/mom，SQLite 改不了 CHECK，需要重建 users。
+  migrateParentIdentity(db);
+
+  try {
+    db.exec(`
+      UPDATE users SET nickname = name
+        WHERE role = 'parent' AND (nickname IS NULL OR nickname = '');
+      UPDATE users SET parent_identity = CASE parent_identity
+          WHEN 'dad' THEN '爸爸'
+          WHEN 'mom' THEN '妈妈'
+          ELSE parent_identity
+        END
+        WHERE role = 'parent' AND parent_identity IS NOT NULL;
+      UPDATE users SET parent_identity = '爸爸'
+        WHERE role = 'parent' AND parent_identity IS NULL;
+      UPDATE users SET avatar = 'dragon'
+        WHERE role = 'parent' AND (avatar IS NULL OR avatar = '');
+      UPDATE users SET is_primary = 1
+        WHERE role = 'parent'
+          AND id = (SELECT MIN(id) FROM users WHERE role = 'parent')
+          AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'parent' AND is_primary = 1);
+    `);
+  } catch (e) { /* skip */ }
+
   // 默认商品分类同属引导数据，与家长账号/加分项/设置一起受 PIGGY_SKIP_BOOTSTRAP 控制
   if (!skipBootstrap()) migrateProductCategories(db);
+}
+
+/**
+ * 重建 users：去掉 parent_identity 上的 CHECK (dad/mom)。
+ *
+ * 身份现在支持「妈妈/爸爸/奶奶…」和用户自定义文本，旧 CHECK 会让新值写不进去，
+ * 而 SQLite 不能直接删除 CHECK，只能重建表。判断依据是建表语句里是否还有
+ * `parent_identity TEXT CHECK`；没有就说明已经是新表，直接跳过。
+ *
+ * 注意：不能先把 users 改名——SQLite 会连带改写其他表里 REFERENCES users 的外键。
+ * 这里按标准流程：外键关掉 → 建 users_new → 拷数据 → 删旧表 → 改名 → 打开外键。
+ * ⚠️ users_new 的列必须与 schema.sql 里的 users 保持一致。
+ */
+function migrateParentIdentity(db: Database.Database): void {
+  const info = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'")
+    .get() as { sql?: string } | undefined;
+  if (!info?.sql) return;
+  if (!/parent_identity\s+TEXT\s+CHECK/i.test(info.sql)) return;
+
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.transaction(() => {
+      db.exec('DROP TABLE IF EXISTS users_new');
+      db.exec(`
+        CREATE TABLE users_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN ('parent', 'child')),
+          pin TEXT,
+          password_hash TEXT,
+          avatar TEXT,
+          nickname TEXT,
+          parent_identity TEXT,
+          is_primary INTEGER NOT NULL DEFAULT 0,
+          birthday TEXT,
+          sex TEXT CHECK (sex IN ('male', 'female')),
+          diary_visible INTEGER NOT NULL DEFAULT 1,
+          hidden INTEGER NOT NULL DEFAULT 0,
+          total_points INTEGER NOT NULL DEFAULT 0,
+          skin TEXT CHECK (skin IN ('peach', 'ice', 'forest')),
+          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          CHECK (
+            (role = 'parent' AND password_hash IS NOT NULL) OR
+            (role = 'child' AND pin IS NOT NULL)
+          )
+        )
+      `);
+      db.exec(`
+        INSERT INTO users_new (
+          id, name, role, pin, password_hash, avatar, nickname, parent_identity,
+          is_primary, birthday, sex, diary_visible, hidden, total_points, skin, created_at
+        )
+        SELECT
+          id, name, role, pin, password_hash, avatar, nickname,
+          CASE parent_identity
+            WHEN 'dad' THEN '爸爸'
+            WHEN 'mom' THEN '妈妈'
+            ELSE parent_identity
+          END,
+          is_primary, birthday, sex, diary_visible, hidden, total_points, skin, created_at
+        FROM users
+      `);
+      db.exec('DROP TABLE users');
+      db.exec('ALTER TABLE users_new RENAME TO users');
+    })();
+
+    const fkErrors = db.pragma('foreign_key_check') as unknown[];
+    if (fkErrors.length) {
+      console.error('[migration] users 重建后存在外键异常', fkErrors);
+    }
+    console.log('[migration] Rebuilt users table (free-form parent_identity)');
+  } catch (e) {
+    console.error('[migration] users 重建失败', e);
+    throw e;
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
 }
 
 /**
@@ -632,8 +753,9 @@ function initParentAccount(): void {
 
   const hash = bcrypt.hashSync(config.adminPassword, 10);
   db.prepare(
-    'INSERT INTO users (name, role, password_hash, avatar, total_points) VALUES (?, ?, ?, ?, ?)'
-  ).run(config.adminUsername, 'parent', hash, 'dragon', 0);
+    `INSERT INTO users (name, role, password_hash, avatar, nickname, parent_identity, is_primary, total_points)
+     VALUES (?, 'parent', ?, 'dragon', ?, '爸爸', 1, 0)`
+  ).run(config.adminUsername, hash, config.adminUsername);
 }
 
 function initDefaultPointItems(): void {

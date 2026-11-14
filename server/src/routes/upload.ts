@@ -1,9 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { requireParent } from '../middleware.js';
 import { config } from '../config.js';
+import { getDb } from '../db/index.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 文件上传：前端把文件读成 data URL（base64）POST 上来，
@@ -51,12 +60,67 @@ function parseDataUrl(data: unknown, allowed: Record<string, string>) {
   return { mime: m[1], ext, buf };
 }
 
+function uploadsDir(): string {
+  return path.join(config.dataDir, 'uploads');
+}
+
+/**
+ * 内容完全相同的文件直接复用已有路径，避免同一张头像/商品图反复上传占空间。
+ *
+ * 只扫顶层文件：头像的路径规则只接受 /uploads/<file>，复用子目录里的文件
+ * （成长日记按家庭归档）会通不过头像校验。
+ */
+function findSameUpload(buf: Buffer): string | null {
+  const dir = uploadsDir();
+  if (!existsSync(dir)) return null;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const full = path.join(dir, entry.name);
+    try {
+      if (statSync(full).size !== buf.length) continue;
+      if (readFileSync(full).equals(buf)) return `/uploads/${entry.name}`;
+    } catch {
+      // 读不到就跳过，别让一个坏文件阻断上传
+    }
+  }
+  return null;
+}
+
 function saveToUploads(buf: Buffer, ext: string): string {
-  const dir = path.join(config.dataDir, 'uploads');
+  const dir = uploadsDir();
   mkdirSync(dir, { recursive: true });
+  const existing = findSameUpload(buf);
+  if (existing) return existing;
   const name = `${Date.now().toString(36)}-${randomBytes(6).toString('hex')}.${ext}`;
   writeFileSync(path.join(dir, name), buf);
   return `/uploads/${name}`;
+}
+
+/**
+ * 删除不再被任何数据引用的上传文件。
+ *
+ * 家长把自定义头像换成新图时调用：旧图只属于这个人就删掉；
+ * 若同一张图还被商品、分类、成长日记或许愿单引用，则保留。
+ * 删除失败只记日志，不影响资料保存。
+ */
+export function deleteUploadIfUnused(url: string): void {
+  if (!/^\/uploads\/[A-Za-z0-9._-]+$/.test(url)) return;
+  const db = getDb();
+  const used =
+    db.prepare('SELECT 1 FROM users WHERE avatar = ? LIMIT 1').get(url) ||
+    db.prepare('SELECT 1 FROM product_categories WHERE icon = ? LIMIT 1').get(url) ||
+    db.prepare('SELECT 1 FROM products WHERE icon = ? LIMIT 1').get(url) ||
+    db.prepare('SELECT 1 FROM wish_items WHERE photo = ? LIMIT 1').get(url) ||
+    db.prepare('SELECT 1 FROM growth_diaries WHERE instr(media, ?) > 0 LIMIT 1').get(url);
+  if (used) return;
+
+  try {
+    unlinkSync(path.join(uploadsDir(), path.basename(url)));
+  } catch (e: any) {
+    if (e?.code !== 'ENOENT') {
+      console.warn(`[uploads] 删除旧文件失败 ${url}:`, e?.message || e);
+    }
+  }
 }
 
 export function registerUploadRoutes(app: FastifyInstance) {

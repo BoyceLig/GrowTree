@@ -10,6 +10,7 @@ import { initDb } from './db/index.js';
 import { registerAuthHook } from './middleware.js';
 import { initWs } from './ws.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerParentRoutes } from './routes/parents.js';
 import { registerChildrenRoutes } from './routes/children.js';
 import { registerPointItemsRoutes } from './routes/point-items.js';
 import { registerPointLogsRoutes } from './routes/point-logs.js';
@@ -86,6 +87,7 @@ async function main() {
   await app.register(async (api) => {
     registerHealthRoutes(api);
     registerAuthRoutes(api);
+    registerParentRoutes(api);
     registerChildrenRoutes(api);
     registerPointItemsRoutes(api);
     registerPointLogsRoutes(api);

@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { verifyToken } from './auth.js';
 import type { JwtPayload } from './auth.js';
+import { getDb } from './db/index.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -81,6 +82,26 @@ export function registerAuthHook(app: FastifyInstance) {
 export async function requireParent(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!req.user || req.user.role !== 'parent') {
     await reply.code(403).send({ error: 'forbidden' });
+  }
+}
+
+/**
+ * 只允许主家长。
+ *
+ * 不能只看 JWT：主账号标记存在数据库里，主账号可能改名、也可能以后支持转让，
+ * 每次请求回库查一次（带主键，成本可以忽略）才不会出现「旧 token 还带着
+ * 已经失效的主账号身份」。
+ */
+export async function requirePrimaryParent(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (!req.user || req.user.role !== 'parent') {
+    await reply.code(403).send({ error: 'forbidden' });
+    return;
+  }
+  const row = getDb()
+    .prepare("SELECT is_primary FROM users WHERE id = ? AND role = 'parent'")
+    .get(req.user.sub) as { is_primary: number } | undefined;
+  if (!row?.is_primary) {
+    await reply.code(403).send({ error: 'primary_only' });
   }
 }
 
