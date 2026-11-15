@@ -1,15 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { useRouter, useRoute, RouterView } from 'vue-router';
+import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+import { useRouter, RouterView } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useToastStore } from '@/stores/toast';
 import { useWsStore } from '@/stores/ws';
-import { api } from '@/api/client';
 import ZodiacAvatar from '@/components/ZodiacAvatar.vue';
 import NavIcon, { type NavIconName } from '@/components/NavIcon.vue';
-import ReviewEntryButton from '@/components/ReviewEntryButton.vue';
-import ReviewPanel from '@/components/ReviewPanel.vue';
-import Modal from '@/components/Modal.vue';
 import SettingsModal from '@/components/SettingsModal.vue';
 import UpdateBanner from '@/components/UpdateBanner.vue';
 import { ensureCategories } from '@/composables/useCategories';
@@ -17,11 +13,10 @@ import { ensureCategories } from '@/composables/useCategories';
 const auth = useAuthStore();
 const toast = useToastStore();
 const router = useRouter();
-const route = useRoute();
 const ws = useWsStore();
 
 // 见 child/Layout.vue 同处说明：图标由 emoji 换成跟随 currentColor 的 SVG
-// 审核**不在**这里：它是待办而不是一个页面，入口改为总览页右下角的浮动按钮（见下）。
+// 审核**不在**导航里：它是总览页的一张待办卡片（心愿单 + 商城兑换 + 任务完成合并）。
 const navItems: { to: string; label: string; icon: NavIconName }[] = [
   { to: '/parent', label: '总览', icon: 'home' },
   { to: '/parent/tasks', label: '任务', icon: 'tasks' },
@@ -32,29 +27,6 @@ const navItems: { to: string; label: string; icon: NavIconName }[] = [
 
 const menuOpen = ref(false);
 const settingsOpen = ref(false);
-const reviewOpen = ref(false);
-const pendingReviewCount = ref(0);
-
-/** 总览页、任务页、商城页都显示审核入口 —— 都是常用审核场景，省得来回切页面 */
-const onDashboard = computed(() => {
-  const p = route.path;
-  return p === '/parent' || p.startsWith('/parent/tasks') || p.startsWith('/parent/shop');
-});
-
-// 浮层挡不住浏览器前进/后退与程序化跳转，离开总览就把弹窗收掉
-watch(
-  () => route.path,
-  () => {
-    reviewOpen.value = false;
-  }
-);
-
-async function loadPendingCount() {
-  try {
-    const data = await api.get<{ pendingReview?: { total: number } }>('/dashboard');
-    pendingReviewCount.value = data.pendingReview?.total ?? 0;
-  } catch {}
-}
 
 const avatarRef = ref<HTMLElement | null>(null);
 
@@ -105,32 +77,15 @@ onMounted(async () => {
   }
   try {
     ws.connect();
-    await loadPendingCount();
   } catch {}
   // 分类注册表预热：商城页 / 商品编辑器 / 分类管理都要用它解析图标与配色，
   // 在这里拉一次，进任何页面都已经是热的
   ensureCategories();
-  // 监听 ws 事件刷新计数
-  window.addEventListener('ws:new_exchange_request', loadPendingCount);
-  window.addEventListener('ws:exchange_reviewed', loadPendingCount);
-  window.addEventListener('ws:task_completion_submitted', loadPendingCount);
-  window.addEventListener('ws:task_review', loadPendingCount);
-  window.addEventListener('ws:recurring_claim_submitted', loadPendingCount);
-  window.addEventListener('ws:recurring_review', loadPendingCount);
-  // Review.vue 审核后通知刷新
-  window.addEventListener('review:updated', loadPendingCount);
 });
 
 onUnmounted(() => {
   document.removeEventListener('click', onDocClick);
   ws.disconnect();
-  window.removeEventListener('ws:new_exchange_request', loadPendingCount);
-  window.removeEventListener('ws:exchange_reviewed', loadPendingCount);
-  window.removeEventListener('ws:task_completion_submitted', loadPendingCount);
-  window.removeEventListener('ws:task_review', loadPendingCount);
-  window.removeEventListener('ws:recurring_claim_submitted', loadPendingCount);
-  window.removeEventListener('ws:recurring_review', loadPendingCount);
-  window.removeEventListener('review:updated', loadPendingCount);
 });
 </script>
 
@@ -196,20 +151,7 @@ onUnmounted(() => {
         </span>
         <span class="label">{{ item.label }}</span>
       </RouterLink>
-
-      <!-- 审核入口：只在总览页出现，浮在导航栏右下角。
-           放在 .tabbar 内部是为了拿到 bottom:100% 这个定位基准 ——
-           否则得把导航栏的高度写死在 CSS 里，安全区一变就错位。 -->
-      <ReviewEntryButton
-        v-if="onDashboard"
-        :count="pendingReviewCount"
-        @click="reviewOpen = true"
-      />
     </nav>
-
-    <Modal v-model="reviewOpen" title="审核中心" width="560px">
-      <ReviewPanel embedded />
-    </Modal>
 
     <SettingsModal v-model="settingsOpen" />
   </div>
@@ -407,8 +349,7 @@ onUnmounted(() => {
 /* 图标由 emoji 换成 stroke="currentColor" 的 SVG 后，color 终于能作用到它身上：
    选中态把图标点亮成深橙，于是"当前在哪一页"多了一个不依赖小字的线索。 */
 .tab.active .icon { color: var(--text-on-orange); }
-/* 原「审核 tab 右上角红点」已随 R3 一起移除：入口搬到总览页右下角的浮动按钮后，
-   红点升级成带数字的圆形角标（见 ReviewEntryButton.vue）。 */
+/* 原「审核 tab 右上角红点」已移除：审核现在是总览页的一张待办卡片。 */
 .tab .label { font-size: var(--fs-xs); font-weight: 500; }
 .tab.active {
   /* 原先用 --accent-yellow（白底仅 1.44:1，全站最低）直接做文字色，而 icon 又是 emoji、

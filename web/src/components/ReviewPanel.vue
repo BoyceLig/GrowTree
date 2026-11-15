@@ -8,6 +8,7 @@ import ZodiacAvatar from '@/components/ZodiacAvatar.vue';
 import CategoryIcon from '@/components/CategoryIcon.vue';
 import RejectModal from '@/components/RejectModal.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import WishReviewModal from '@/components/WishReviewModal.vue';
 import {
   type ReviewItem,
   mergePending,
@@ -44,6 +45,11 @@ const loading = ref(true);
 const loadingProcessed = ref(false);
 const showProcessed = ref(false);
 const processingKey = ref<string | null>(null);
+
+/* ── 心愿单：需要先抢单锁，再在弹窗里补充商品信息 ─────────────────────── */
+const wishClaimingKey = ref<string | null>(null);
+const wishOpen = ref(false);
+const wishTarget = ref<any | null>(null);
 
 const rejectTarget = ref<ReviewItem | null>(null);
 const rejectOpen = ref(false);
@@ -93,10 +99,13 @@ watch(childFilter, () => pruneSelection());
 
 const summary = computed(() => summarize(visiblePending.value));
 
-const selectedItems = computed(() => visiblePending.value.filter((i) => selectedKeys.value.has(i.key)));
+/** 心愿单需要补充商品信息，不能走批量通过/拒绝，因此不参与勾选 */
+const selectablePending = computed(() => visiblePending.value.filter((i) => i.kind !== 'wish'));
+
+const selectedItems = computed(() => selectablePending.value.filter((i) => selectedKeys.value.has(i.key)));
 const selectedCount = computed(() => selectedItems.value.length);
 const allSelected = computed(
-  () => visiblePending.value.length > 0 && selectedCount.value === visiblePending.value.length
+  () => selectablePending.value.length > 0 && selectedCount.value === selectablePending.value.length
 );
 const halfSelected = computed(() => selectedCount.value > 0 && !allSelected.value);
 
@@ -121,6 +130,7 @@ function pruneSelection() {
 }
 
 function toggleSelect(it: ReviewItem) {
+  if (it.kind === 'wish') return;
   const next = new Set(selectedKeys.value);
   if (next.has(it.key)) next.delete(it.key);
   else next.add(it.key);
@@ -128,31 +138,41 @@ function toggleSelect(it: ReviewItem) {
 }
 
 function toggleSelectAll() {
-  selectedKeys.value = allSelected.value ? new Set() : new Set(visiblePending.value.map((i) => i.key));
+  selectedKeys.value = allSelected.value ? new Set() : new Set(selectablePending.value.map((i) => i.key));
 }
 
 async function loadPending() {
-  const [ex, tk, rc] = await Promise.all([
+  const [ex, tk, rc, ws] = await Promise.all([
     api.get<{ requests: any[] }>('/exchange-requests?status=pending'),
     api.get<{ completions: any[] }>('/adhoc-tasks/completions?status=pending'),
     api.get<{ completions: any[] }>('/recurring-tasks/claims?status=pending'),
+    api.get<{ pending: any[] }>('/wish-requests'),
   ]);
-  pending.value = mergePending(ex.requests, tk.completions, rc.completions);
+  pending.value = mergePending(ex.requests, tk.completions, rc.completions, ws.pending);
   pruneSelection();
 }
 
 async function loadProcessed() {
   loadingProcessed.value = true;
   try {
-    const [exOk, exNo, tkOk, tkNo, rcOk, rcNo] = await Promise.all([
+    const [exOk, exNo, tkOk, tkNo, rcOk, rcNo, ws] = await Promise.all([
       api.get<{ requests: any[] }>('/exchange-requests?status=approved'),
       api.get<{ requests: any[] }>('/exchange-requests?status=rejected'),
       api.get<{ completions: any[] }>('/adhoc-tasks/completions?status=approved'),
       api.get<{ completions: any[] }>('/adhoc-tasks/completions?status=rejected'),
       api.get<{ completions: any[] }>('/recurring-tasks/claims?status=approved'),
       api.get<{ completions: any[] }>('/recurring-tasks/claims?status=rejected'),
+      api.get<{ history: any[] }>('/wish-requests'),
     ]);
-    processed.value = mergeProcessed(exOk.requests, exNo.requests, tkOk.completions, tkNo.completions, rcOk.completions, rcNo.completions);
+    processed.value = mergeProcessed(
+      exOk.requests,
+      exNo.requests,
+      tkOk.completions,
+      tkNo.completions,
+      rcOk.completions,
+      rcNo.completions,
+      ws.history
+    );
   } finally {
     loadingProcessed.value = false;
   }
@@ -215,7 +235,52 @@ function handleError(e: any) {
   else toast.error(e?.message || '操作失败');
 }
 
+/** 卡片标题上方的小标签：让孩子/家长一眼分清「名称」和「理由」 */
+function cardTitleLabel(it: ReviewItem): string {
+  if (it.kind === 'wish') return '商品名称';
+  if (it.kind === 'exchange') return it.exType === 'cash' ? '兑换内容' : '商品名称';
+  return '任务名称';
+}
+
+/** 申请理由：心愿单一定有；任务完成如果孩子写了说明也一并展示 */
+function cardReason(it: ReviewItem): string {
+  if (it.kind === 'wish') return it.wish_reason || '';
+  return it.reason || '';
+}
+
+/** 心愿单审核人展示：昵称（身份），两者相同不重复 */
+function wishReviewerLabel(it: ReviewItem): string {
+  const name = it.wish_reviewer_name || '家长';
+  const identity = it.wish_reviewer_identity || '家长';
+  return name === identity ? name : `${name}（${identity}）`;
+}
+
+async function startWishReview(it: ReviewItem) {
+  if (it.wish_status === 'reviewing' && !it.wish_locked_by_me) return;
+  wishClaimingKey.value = it.key;
+  try {
+    const res = await api.post<{ item: any }>(`/wish-requests/${it.id}/claim`);
+    wishTarget.value = res.item;
+    wishOpen.value = true;
+  } catch (e: any) {
+    toast.error(e.message || '暂时无法接手这个心愿');
+    if (e?.status === 409) await refresh();
+  } finally {
+    wishClaimingKey.value = null;
+  }
+}
+
+async function onWishDone() {
+  wishOpen.value = false;
+  wishTarget.value = null;
+  await refresh();
+}
+
 function askApprove(it: ReviewItem) {
+  if (it.kind === 'wish') {
+    startWishReview(it);
+    return;
+  }
   confirmMessage.value =
     it.kind === 'exchange'
       ? `通过${it.user_name}的兑换申请？将扣除 ${it.points} 积分`
@@ -401,12 +466,18 @@ onMounted(() => {
   window.addEventListener('ws:new_exchange_request', onPush);
   window.addEventListener('ws:task_completion_submitted', onPush);
   window.addEventListener('ws:recurring_claim_submitted', onPush);
+  window.addEventListener('ws:wish_request_created', onPush);
+  window.addEventListener('ws:wish_requests_changed', onPush);
+  window.addEventListener('ws:wish_request_reviewed', onPush);
 });
 
 onUnmounted(() => {
   window.removeEventListener('ws:new_exchange_request', onPush);
   window.removeEventListener('ws:task_completion_submitted', onPush);
   window.removeEventListener('ws:recurring_claim_submitted', onPush);
+  window.removeEventListener('ws:wish_request_created', onPush);
+  window.removeEventListener('ws:wish_requests_changed', onPush);
+  window.removeEventListener('ws:wish_request_reviewed', onPush);
 });
 </script>
 
@@ -419,7 +490,9 @@ onUnmounted(() => {
 
     <p v-if="!loading && summary.total > 0" class="summary">
       共 <strong>{{ summary.total }}</strong> 条待处理
-      <span class="split">兑换 {{ summary.exchange }} · 任务 {{ summary.task }}</span>
+      <span class="split">
+        心愿单 {{ summary.wish }} · 商城兑换 {{ summary.exchange }} · 任务 {{ summary.task }}
+      </span>
     </p>
 
     <!-- 按孩子统计 + 筛选：角标就是该孩子当前待办条数，点一下只看他的 -->
@@ -456,7 +529,7 @@ onUnmounted(() => {
     <!-- 待审核：两类混排，按提交时间倒序 -->
     <div v-else class="list">
       <!-- 批量操作条：勾选后才显示批量按钮。滚动时吸顶，长列表里不必翻回顶部 -->
-      <div class="batch-bar">
+      <div v-if="selectablePending.length > 0" class="batch-bar">
         <label class="pick-all">
           <input
             type="checkbox"
@@ -493,15 +566,65 @@ onUnmounted(() => {
         正在处理 {{ batchDone }}/{{ batchTotal }} 条…
       </p>
 
-      <GlassCard
-        v-for="it in visiblePending"
-        :key="it.key"
-        padding="14px 18px"
-        class="item"
-        :class="{ picked: selectedKeys.has(it.key) }"
-      >
-        <div class="head">
-          <label class="pick">
+      <div class="pending-grid">
+        <GlassCard
+          v-for="it in visiblePending"
+          :key="it.key"
+          padding="14px 18px"
+          class="item"
+          :class="{ picked: selectedKeys.has(it.key) }"
+        >
+        <div class="card-head">
+          <ZodiacAvatar :zodiac="it.user_avatar" :size="40" />
+          <div class="who">
+            <div class="user-name">{{ it.user_name }}</div>
+            <div class="time">{{ fmtTime(it.created_at) }}</div>
+          </div>
+          <span class="tag" :class="tagTone(it)">{{ tagText(it) }}</span>
+        </div>
+
+        <!-- 名称和理由各自带小标签：文字再多也能一眼分清哪行是什么 -->
+        <div class="card-section">
+          <span class="card-label">{{ cardTitleLabel(it) }}</span>
+          <h4 v-if="it.kind === 'wish'" class="card-title">{{ it.wish_title }}</h4>
+          <h4 v-else-if="it.kind === 'exchange' && it.exType === 'cash'" class="card-title cash-title">
+            {{ it.amount }} 元现金
+          </h4>
+          <h4 v-else-if="it.kind === 'exchange'" class="card-title with-icon">
+            <CategoryIcon :icon="it.product_icon" :size="20" />
+            <span>{{ it.product_name || '已删除的商品' }}</span>
+          </h4>
+          <h4 v-else class="card-title">{{ it.task_name }}</h4>
+        </div>
+
+        <div v-if="cardReason(it)" class="card-section">
+          <span class="card-label">申请理由</span>
+          <p class="card-reason">{{ cardReason(it) }}</p>
+        </div>
+
+        <div class="meta-row">
+          <template v-if="it.kind === 'wish'">
+            <span class="meta-chip points" :class="{ muted: !it.estimated_points }">
+              {{ it.estimated_points ? `预计 ${it.estimated_points} 分` : '积分待定' }}
+            </span>
+          </template>
+          <template v-else-if="it.kind === 'exchange'">
+            <span class="meta-chip minus">消耗 {{ it.points }} 分</span>
+          </template>
+          <template v-else-if="it.kind === 'recurring'">
+            <span class="meta-chip plus">+{{ it.task_points }} 分</span>
+            <span class="meta-chip">期次 {{ it.period_key }}</span>
+            <span v-if="usedText(it)" class="meta-chip used" :class="{ live: usedLive(it) }">
+              用时 {{ usedText(it) }}
+            </span>
+          </template>
+          <template v-else>
+            <span class="meta-chip plus">+{{ it.task_points }} 分</span>
+          </template>
+        </div>
+
+        <div class="actions">
+          <label v-if="it.kind !== 'wish'" class="pick foot-pick">
             <input
               type="checkbox"
               class="box"
@@ -511,80 +634,45 @@ onUnmounted(() => {
               @change="toggleSelect(it)"
             />
           </label>
-          <div class="user">
-            <ZodiacAvatar :zodiac="it.user_avatar" :size="44" />
-            <div class="who">
-              <div class="user-name">{{ it.user_name }}</div>
-              <div class="time">{{ fmtTime(it.created_at) }}</div>
-            </div>
-          </div>
-          <span class="tag" :class="tagTone(it)">{{ tagText(it) }}</span>
-        </div>
 
-        <div class="detail">
-          <template v-if="it.kind === 'exchange'">
-            <div class="field">
-              <span class="label">{{ it.exType === 'cash' ? '兑换金额' : '商品' }}</span>
-              <span v-if="it.exType === 'cash'" class="value cash">{{ it.amount }} 元</span>
-              <span v-else class="value with-icon">
-                <CategoryIcon :icon="it.product_icon" :size="22" />
-                {{ it.product_name || '已删除' }}
-              </span>
-            </div>
-            <div class="field">
-              <span class="label">消耗积分</span>
-              <span class="value minus">-{{ it.points }} 分</span>
-            </div>
-          </template>
-          <template v-else-if="it.kind === 'recurring'">
-            <div class="field">
-              <span class="label">周期任务</span>
-              <span class="value">{{ it.task_name }}</span>
-            </div>
-            <div class="field">
-              <span class="label">期次</span>
-              <span class="value">{{ it.period_key }}</span>
-            </div>
-            <div class="field">
-              <span class="label">奖励积分</span>
-              <span class="value plus">+{{ it.task_points }} 分</span>
-            </div>
-            <!-- 用时：孩子做了多久是审核时的关键信息（尤其"这件事是不是真做完了"）。
-                 没计过时整格不出现 —— 显示「00:00」会让人以为孩子秒完成。 -->
-            <div v-if="usedText(it)" class="field">
-              <span class="label">用时</span>
-              <span class="value used" :class="{ live: usedLive(it) }">{{ usedText(it) }}</span>
-            </div>
+          <div class="action-btns">
+          <template v-if="it.kind === 'wish'">
+            <span v-if="it.wish_status === 'reviewing' && !it.wish_locked_by_me" class="lock-hint">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3.2" y="7" width="9.6" height="6.4" rx="1.6" />
+                <path d="M5.4 7V5.2a2.6 2.6 0 0 1 5.2 0V7" />
+              </svg>
+              {{ wishReviewerLabel(it) }} 审核中
+            </span>
+            <button
+              v-else
+              class="btn btn-primary small"
+              :disabled="wishClaimingKey === it.key || batchRunning"
+              @click="startWishReview(it)"
+            >
+              {{ wishClaimingKey === it.key ? '接手…' : it.wish_status === 'reviewing' ? '继续审核' : '审核' }}
+            </button>
           </template>
           <template v-else>
-            <div class="field">
-              <span class="label">任务</span>
-              <span class="value">{{ it.task_name }}</span>
-            </div>
-            <div class="field">
-              <span class="label">奖励积分</span>
-              <span class="value plus">+{{ it.task_points }} 分</span>
-            </div>
+            <button
+              class="btn btn-success small"
+              :disabled="processingKey === it.key || batchRunning"
+              @click="askApprove(it)"
+            >
+              {{ processingKey === it.key ? '处理中...' : '✅ 通过' }}
+            </button>
+            <button
+              class="btn btn-danger small"
+              :disabled="processingKey === it.key || batchRunning"
+              @click="askReject(it)"
+            >
+              ❌ 拒绝
+            </button>
           </template>
+          </div>
         </div>
-
-        <div class="actions">
-          <button
-            class="btn btn-success small"
-            :disabled="processingKey === it.key || batchRunning"
-            @click="askApprove(it)"
-          >
-            {{ processingKey === it.key ? '处理中...' : '✅ 通过' }}
-          </button>
-          <button
-            class="btn btn-danger small"
-            :disabled="processingKey === it.key || batchRunning"
-            @click="askReject(it)"
-          >
-            ❌ 拒绝
-          </button>
-        </div>
-      </GlassCard>
+        </GlassCard>
+      </div>
     </div>
 
     <!-- 已处理：默认折叠，展开才请求 -->
@@ -623,15 +711,31 @@ onUnmounted(() => {
             <div class="line">
               <span class="what">{{ summaryOf(it) }}</span>
               <span v-if="usedMiniText(it)" class="used-mini" :class="{ live: usedLive(it) }">{{ usedMiniText(it) }}</span>
-              <span class="pts" :class="it.kind === 'task' || it.kind === 'recurring' ? 'plus' : 'minus'">
+              <span
+                v-if="it.kind === 'wish'"
+                class="pts wish-pts"
+              >
+                {{ it.estimated_points ? `预计 ${it.estimated_points} 分` : '积分待定' }}
+              </span>
+              <span v-else class="pts" :class="it.kind === 'task' || it.kind === 'recurring' ? 'plus' : 'minus'">
                 {{ it.kind === 'task' || it.kind === 'recurring' ? '+' : '-' }}{{ it.kind === 'task' || it.kind === 'recurring' ? it.task_points : it.points }} 分
               </span>
             </div>
 
+            <p v-if="it.kind === 'wish'" class="wish-history-reason">{{ it.wish_reason }}</p>
+
             <div class="result" :class="it.status">
               <span aria-hidden="true">{{ it.status === 'approved' ? '✅' : '❌' }}</span>
-              <span v-if="it.status === 'approved'">已通过</span>
+              <span v-if="it.kind === 'wish' && it.status === 'approved'">
+                已上架「{{ it.wish_product_name || '商品' }}」 · {{ it.wish_product_cost ?? 0 }} 分
+                <template v-if="it.wish_category_name"> · {{ it.wish_category_name }}</template>
+              </span>
+              <span v-else-if="it.status === 'approved'">已通过</span>
               <span v-else>已拒绝{{ it.reason ? `：${it.reason}` : '（未填原因）' }}</span>
+            </div>
+
+            <div v-if="it.kind === 'wish'" class="hi-reviewer">
+              审核人：{{ wishReviewerLabel(it) }} · {{ fmtTime(it.reviewed_at) }}
             </div>
           </GlassCard>
         </div>
@@ -654,6 +758,8 @@ onUnmounted(() => {
       :saving="rejectMode === 'batch' ? batchRunning : processingKey === rejectTarget?.key"
       @submit="doReject"
     />
+
+    <WishReviewModal v-model="wishOpen" :item="wishTarget" @done="onWishDone" />
   </div>
 </template>
 
@@ -736,6 +842,145 @@ onUnmounted(() => {
 }
 
 .list { display: flex; flex-direction: column; gap: var(--space-12); }
+
+/* 待审核卡片：沿用原心愿单的卡片宽度，横向自动排满，排不下就换到第二排 */
+.pending-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  align-items: stretch;
+  gap: var(--space-12);
+}
+.pending-grid .item {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.pending-grid .actions {
+  margin-top: auto;
+  padding-top: var(--space-10);
+  border-top: 1px solid var(--glass-border);
+  flex-wrap: wrap;
+}
+
+/* 卡片头部：头像固定左上，昵称与时间两行，类型标签靠右 */
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  margin-bottom: var(--space-12);
+}
+.card-head .who { flex: 1; min-width: 0; }
+.card-head .user-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.35;
+}
+.card-head .time { font-size: var(--fs-2xs); }
+.card-head .tag { flex-shrink: 0; }
+
+/* 名称 / 理由分组：每组带一个小标签，文字多也不会混在一起 */
+.card-section + .card-section { margin-top: var(--space-10); }
+.card-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: 3px;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.card-label::before {
+  content: '';
+  width: 3px;
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: currentColor;
+  opacity: 0.45;
+}
+
+/* 标题：卡片里最大的一级，先看清审核对象 */
+.card-title {
+  margin: 0;
+  font-family: var(--font-cute);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text-primary);
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-title.cash-title { color: var(--text-on-yellow); }
+.card-title.with-icon {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.card-title.with-icon span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 心愿理由：比标题小一档，最多两行，不抢标题 */
+.card-reason {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 元信息：积分/期次/用时做成小胶囊，扫一眼即可 */
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  margin: var(--space-12) 0;
+}
+.meta-chip {
+  padding: 3px var(--space-8);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-2xs);
+  line-height: 1.5;
+  white-space: nowrap;
+  background: rgba(90, 58, 74, 0.06);
+  color: var(--text-secondary);
+}
+.meta-chip.points { background: rgba(255, 180, 84, 0.16); color: var(--text-on-orange); }
+.meta-chip.minus { background: rgba(255, 140, 160, 0.14); color: var(--text-on-red); }
+.meta-chip.plus { background: rgba(126, 212, 185, 0.16); color: var(--text-on-mint); }
+.meta-chip.used { background: rgba(132, 197, 255, 0.14); color: var(--text-on-sky); }
+.meta-chip.used.live { background: rgba(255, 180, 84, 0.16); color: var(--text-on-orange); }
+.meta-chip.muted { background: rgba(90, 58, 74, 0.06); color: var(--text-muted); }
+
+/* 底部操作：勾选放左下，按钮靠右，和上面内容用一条淡分隔线隔开 */
+.foot-pick {
+  width: 32px;
+  height: 32px;
+  margin-left: calc(-1 * var(--space-4));
+}
+.action-btns {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 560px) {
+  .pending-grid { grid-template-columns: 1fr; }
+}
 
 /* ── 批量操作条 ─────────────────────────────────────────────────────────
    吸顶：待办可能有十几条，勾完最后一条还要滚回顶部才能点「批量通过」是最烦的。
@@ -869,6 +1114,7 @@ onUnmounted(() => {
   font-size: var(--fs-xs);
   font-weight: 600;
 }
+.tag.wish { background: rgba(255, 155, 176, 0.2); color: var(--text-on-red); }
 .tag.product { background: rgba(132, 197, 255, 0.2); color: var(--text-on-sky); }
 .tag.cash { background: rgba(255, 209, 102, 0.2); color: var(--text-on-yellow); }
 .tag.task { background: rgba(126, 212, 185, 0.2); color: var(--text-on-mint); }
@@ -876,6 +1122,7 @@ onUnmounted(() => {
 
 .detail {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-24);
   padding: var(--space-10) 0;
   border-top: 1px solid var(--glass-border);
@@ -899,6 +1146,14 @@ onUnmounted(() => {
    带暂停时较长，允许换行 —— 被 ellipsis 截成「00:05（暂停 0…」就失去意义了 */
 .value.used { color: var(--text-on-sky); font-variant-numeric: tabular-nums; white-space: normal; line-height: 1.35; }
 .value.used.live { color: var(--text-on-orange); font-weight: 700; }
+.lock-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.lock-hint svg { width: 13px; height: 13px; flex-shrink: 0; }
 
 .actions { display: flex; gap: var(--space-8); }
 .small { padding: var(--space-6) var(--space-14); font-size: var(--fs-sm); }
@@ -955,6 +1210,24 @@ onUnmounted(() => {
 .pts { font-family: var(--font-cute); font-weight: 700; flex-shrink: 0; }
 .pts.plus { color: var(--text-on-mint); }
 .pts.minus { color: var(--text-on-red); }
+.pts.wish-pts {
+  font-family: var(--font-body);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-on-orange);
+}
+
+.wish-history-reason {
+  margin: var(--space-6) 0 0;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.hi-reviewer {
+  margin-top: var(--space-6);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
 
 .result {
   display: flex;

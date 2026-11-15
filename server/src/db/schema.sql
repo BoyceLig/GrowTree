@@ -399,6 +399,33 @@ CREATE TABLE IF NOT EXISTS wish_items (
 CREATE INDEX IF NOT EXISTS idx_wish_items_child ON wish_items(child_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_wish_items_status ON wish_items(status, created_at DESC);
 
+-- 心愿单（2026-11-13）：孩子自由填写「想要什么 / 为什么 / 预计积分（选填）」，
+-- 家长端由**一位**家长抢单审核，补充商品信息后直接上架商城。
+--   同一时刻 status='reviewing' 只允许一个 reviewer_id；家长放弃/超时（10 分钟）
+--   自动回到 pending，其他家长才能接手。
+--   审核完成后 pending 队列不再显示，只保留在历史记录里（reviewer + reviewed_at + 上架内容）。
+CREATE TABLE IF NOT EXISTS wish_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  child_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,                 -- 孩子写的：想要什么
+  reason TEXT NOT NULL,                -- 孩子写的：为什么想要
+  estimated_points INTEGER,            -- 孩子预估要扣多少积分；NULL = 选填未填
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'reviewing', 'approved', 'rejected', 'cancelled')),
+  reviewer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  review_started_at INTEGER,           -- 抢单时间（超过 10 分钟视为放弃，别人可接手）
+  reviewed_at INTEGER,                 -- 审核完成时间
+  review_note TEXT,                    -- 家长留言 / 驳回原因
+  product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  -- 审核结果快照（JSON）：商品名/积分/库存/分类名。商品之后被改/删，历史也还完整
+  review_payload TEXT,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_wish_requests_status ON wish_requests(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_wish_requests_child ON wish_requests(child_id, created_at DESC);
+
 -- 全局设置（键值对）
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,

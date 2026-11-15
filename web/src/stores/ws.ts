@@ -261,6 +261,31 @@ export function useWsStore() {
       }
       if (relevant) window.dispatchEvent(new CustomEvent('ws:mailbox_message', { detail: msg }));
     }
+
+    // 心愿单：孩子提交了新心愿 → 所有家长收到提醒，队列实时刷新
+    if (msg.type === 'wish_request_created' && auth.user?.role === 'parent') {
+      toast.info(`🌠 ${msg.childName || '孩子'} 许下了一个心愿：${msg.title}`);
+      window.dispatchEvent(new CustomEvent('ws:wish_request_created', { detail: msg }));
+      window.dispatchEvent(new CustomEvent('ws:wish_requests_changed', { detail: msg }));
+    }
+
+    // 心愿单：家长审核完成 → 孩子看到结果；其他家长的历史记录同步刷新
+    if (msg.type === 'wish_request_reviewed') {
+      if (auth.user?.role === 'child') {
+        if (msg.status === 'approved') {
+          toast.success(`🎁 你的心愿「${msg.title}」通过啦，已经上架商城`);
+        } else {
+          toast.warning(`你的心愿「${msg.title}」未通过${msg.note ? '：' + msg.note : ''}`);
+        }
+      }
+      window.dispatchEvent(new CustomEvent('ws:wish_request_reviewed', { detail: msg }));
+      window.dispatchEvent(new CustomEvent('ws:wish_requests_changed', { detail: msg }));
+    }
+
+    // 心愿单：有人抢单 / 放弃 / 撤回 → 所有家长静默重拉，锁状态立刻同步
+    if (msg.type === 'wish_requests_changed') {
+      window.dispatchEvent(new CustomEvent('ws:wish_requests_changed', { detail: msg }));
+    }
   }
 
   return {

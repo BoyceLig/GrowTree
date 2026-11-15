@@ -9,7 +9,7 @@
  * 抽成纯函数之后可以用 .workbuddy/review-timeline/ 的脚手架定数据直测，不依赖库里的真实数据。
  */
 
-export type ReviewKind = 'exchange' | 'task' | 'recurring';
+export type ReviewKind = 'exchange' | 'task' | 'recurring' | 'wish';
 export type ReviewStatus = 'pending' | 'approved' | 'rejected';
 
 /** 周期任务完成申请带的计时信息（后端 timerInfo），审核时家长能看到孩子做了多久 */
@@ -46,6 +46,18 @@ export interface ReviewItem {
   period_key?: string;
   /** 周期任务类：用时（没计过时为 idle，UI 不显示） */
   timer?: ReviewTimer;
+  /** 心愿单类：孩子写的内容 + 抢单锁状态 + 审核结果快照 */
+  wish_title?: string;
+  wish_reason?: string;
+  estimated_points?: number | null;
+  wish_status?: 'pending' | 'reviewing';
+  wish_locked_by_me?: boolean;
+  wish_reviewer_name?: string | null;
+  wish_reviewer_identity?: string | null;
+  wish_product_name?: string | null;
+  wish_product_cost?: number | null;
+  wish_product_stock?: number | null;
+  wish_category_name?: string | null;
 }
 
 /** 已处理列表只展示最近这么多条：再往前的历史没有处理价值，只会把弹窗撑长 */
@@ -110,6 +122,36 @@ export function toRecurringItem(c: any): ReviewItem {
   } as ReviewItem;
 }
 
+/** 心愿单：owner 字段叫 child_id/child_name，审核结果在 title/reason/product_* 上 */
+export function toWishItem(w: any): ReviewItem {
+  const action = (w.review as { action?: string; product?: any } | null)?.product;
+  return {
+    key: `wish:${w.id}`,
+    kind: 'wish',
+    id: w.id,
+    user_id: w.child_id,
+    user_name: w.child_name,
+    user_avatar: w.child_avatar,
+    status: w.status === 'approved' ? 'approved' : w.status === 'rejected' ? 'rejected' : 'pending',
+    created_at: w.created_at,
+    reviewed_at: w.reviewed_at ?? null,
+    reason: w.review_note ?? null,
+    task_name: w.title,
+    points: w.estimated_points ?? undefined,
+    wish_title: w.title,
+    wish_reason: w.reason,
+    estimated_points: w.estimated_points ?? null,
+    wish_status: w.status === 'reviewing' ? 'reviewing' : 'pending',
+    wish_locked_by_me: !!w.locked_by_me,
+    wish_reviewer_name: w.reviewer_name ?? null,
+    wish_reviewer_identity: w.reviewer_identity ?? null,
+    wish_product_name: action?.name ?? w.product_name ?? null,
+    wish_product_cost: action?.cost ?? w.product_cost ?? null,
+    wish_product_stock: action?.stock ?? w.product_stock ?? null,
+    wish_category_name: action?.category_name ?? w.category_name ?? null,
+  };
+}
+
 export const byCreatedDesc = (a: ReviewItem, b: ReviewItem) => b.created_at - a.created_at;
 
 export const byReviewedDesc = (a: ReviewItem, b: ReviewItem) =>
@@ -120,11 +162,17 @@ export const byReviewedDesc = (a: ReviewItem, b: ReviewItem) =>
  * 注意是"先合并再排序"，不是"两类各自排完再首尾相接" —— 后者会把顺序变成
  * 「所有兑换（新的在前）→ 所有任务（新的在前）」，家长就得在两段之间来回找最新的一条。
  */
-export function mergePending(exchangeRows: any[], taskRows: any[], recurringRows: any[] = []): ReviewItem[] {
+export function mergePending(
+  exchangeRows: any[],
+  taskRows: any[],
+  recurringRows: any[] = [],
+  wishRows: any[] = []
+): ReviewItem[] {
   return [
     ...exchangeRows.map(toExchangeItem),
     ...taskRows.map(toTaskItem),
     ...recurringRows.map(toRecurringItem),
+    ...wishRows.map(toWishItem),
   ].sort(byCreatedDesc);
 }
 
@@ -141,7 +189,8 @@ export function mergeProcessed(
   taskApproved: any[],
   taskRejected: any[],
   recurringApproved: any[] = [],
-  recurringRejected: any[] = []
+  recurringRejected: any[] = [],
+  wishRows: any[] = []
 ): ReviewItem[] {
   return [
     ...exchangeApproved.map(toExchangeItem),
@@ -150,6 +199,7 @@ export function mergeProcessed(
     ...taskRejected.map(toTaskItem),
     ...recurringApproved.map(toRecurringItem),
     ...recurringRejected.map(toRecurringItem),
+    ...wishRows.map(toWishItem),
   ]
     .sort(byReviewedDesc)
     .slice(0, PROCESSED_LIMIT);
@@ -161,27 +211,31 @@ export function mergeProcessed(
 export function summarize(items: ReviewItem[]) {
   return {
     total: items.length,
+    wish: items.filter((i) => i.kind === 'wish').length,
     exchange: items.filter((i) => i.kind === 'exchange').length,
-    task: items.filter((i) => i.kind !== 'exchange').length,
+    task: items.filter((i) => i.kind === 'task' || i.kind === 'recurring').length,
   };
 }
 
 /** 类型标签文案：混排之后每条**必须**自带类型标签，否则各类条目长得一样就分不清了 */
 export function tagText(it: ReviewItem): string {
-  if (it.kind === 'task') return '📋 任务完成';
-  if (it.kind === 'recurring') return '🔁 周期任务';
-  return it.exType === 'cash' ? '💵 现金兑换' : '🎁 商品兑换';
+  if (it.kind === 'wish') return '心愿单';
+  if (it.kind === 'task') return '任务完成';
+  if (it.kind === 'recurring') return '周期任务';
+  return '商城兑换';
 }
 
-/** 类型标签的配色档：商品→天空蓝、现金→黄、任务→薄荷、周期任务→橙 */
-export function tagTone(it: ReviewItem): 'product' | 'cash' | 'task' | 'recurring' {
+/** 类型标签的配色档：心愿单→粉、商城兑换→天空蓝、任务→薄荷、周期任务→橙 */
+export function tagTone(it: ReviewItem): 'wish' | 'product' | 'task' | 'recurring' {
+  if (it.kind === 'wish') return 'wish';
   if (it.kind === 'task') return 'task';
   if (it.kind === 'recurring') return 'recurring';
-  return it.exType === 'cash' ? 'cash' : 'product';
+  return 'product';
 }
 
 /** 已处理条目的一句话摘要（卡片压扁了，不铺两列详情） */
 export function summaryOf(it: ReviewItem): string {
+  if (it.kind === 'wish') return it.wish_title || '心愿';
   if (it.kind === 'task') return it.task_name || '任务';
   if (it.kind === 'recurring') return it.period_key ? `${it.task_name || '周期任务'}（${it.period_key}）` : it.task_name || '周期任务';
   return it.exType === 'cash' ? `${it.amount} 元` : it.product_name || '已删除的商品';
