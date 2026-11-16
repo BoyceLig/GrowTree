@@ -12,10 +12,10 @@ def gtVersionBits = gtVersionRaw.split('-')
 def gtVersionCode = (gtVersionBits[0] as int) * 10 + (gtVersionBits.length > 1 ? (gtVersionBits[1] as int) : 0)
 
 android {
-    namespace "com.growtree.app"
+    namespace "com.manalong.app"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.growtree.app"
+        applicationId "com.manalong.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // versionCode / versionName 均取自仓库根目录 VERSION（见文件顶部说明）

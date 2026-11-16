@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 成长树 · 把双架构镜像推送到镜像仓库（阿里云 ACR / 任意 Docker Registry）
+# 满伴成长树 · 把双架构镜像推送到镜像仓库（阿里云 ACR / 任意 Docker Registry）
 #
 # 用法：
 #   bash scripts/push-acr.sh crpi-xxxx.cn-hangzhou.personal.cr.aliyuncs.com/wdcasc/growtree
@@ -25,7 +25,7 @@ VER="${VERSION:-$(tr -d '[:space:]' < VERSION 2>/dev/null || true)}"
 VER="${VER:-latest}"
 
 command -v docker >/dev/null || { echo "✗ 没找到 docker" >&2; exit 1; }
-docker image inspect "growtree:${VER}" >/dev/null 2>&1 || { echo "✗ 本地没有 growtree:${VER}，先构建（bash scripts/docker-build.sh --no-up）" >&2; exit 1; }
+docker image inspect "manalong:${VER}" >/dev/null 2>&1 || { echo "✗ 本地没有 manalong:${VER}，先构建（bash scripts/docker-build.sh --no-up）" >&2; exit 1; }
 
 # ── 推之前先跑一道发版校验 ───────────────────────────────────────────
 # 公开仓库是**匿名可拉**的，镜像层推上去就撤不回来了，所以宁可在这里拦下来。
@@ -43,9 +43,9 @@ fi
 # 是直接推进仓库的，**不会**在本地留下 -amd64 镜像。这种情况下只要仓库里已经有
 # :${VER}-amd64，就可以直接跳到第 4 步合并清单。
 LOCAL_AMD64=1
-if ! docker image inspect "growtree:${VER}-amd64" >/dev/null 2>&1; then
+if ! docker image inspect "manalong:${VER}-amd64" >/dev/null 2>&1; then
   LOCAL_AMD64=0
-  echo "== 本地没有 growtree:${VER}-amd64，检查仓库里是否已推送 ..."
+  echo "== 本地没有 manalong:${VER}-amd64，检查仓库里是否已推送 ..."
   if BUILDX_CONFIG="${BUILDX_CONFIG:-/tmp/bx}" docker buildx imagetools inspect "${TARGET}:${VER}-amd64" >/dev/null 2>&1; then
     echo "   ✓ 仓库里已有 ${TARGET}:${VER}-amd64，跳过本地构建产物"
   else
@@ -71,12 +71,12 @@ docker login "${HOST}" </dev/null 2>/dev/null \
   || echo "（未在本机缓存凭证，直接尝试推送——若下面报 unauthorized，请先手动 docker login）"
 
 echo "== 3/6 打 tag 并推送 arm64（Apple/ARM 机器用）"
-docker tag "growtree:${VER}"          "${TARGET}:${VER}-arm64"
+docker tag "manalong:${VER}"          "${TARGET}:${VER}-arm64"
 docker push "${TARGET}:${VER}-arm64"
 
 echo "== 4/6 打 tag 并推送 amd64（x86 的 NAS/服务器用）"
 if [ "${LOCAL_AMD64}" = "1" ]; then
-  docker tag "growtree:${VER}-amd64"    "${TARGET}:${VER}-amd64"
+  docker tag "manalong:${VER}-amd64"    "${TARGET}:${VER}-amd64"
   docker push "${TARGET}:${VER}-amd64"
 else
   echo "   （已在第 0 步确认仓库里有 ${VER}-amd64，跳过）"
@@ -93,7 +93,7 @@ D_LATEST="$(digest_of "${TARGET}:latest")"
 echo "   ${VER}  = ${D_VER}"
 echo "   latest = ${D_LATEST}"
 # ⚠️ 这一步不能省：曾经因为一条命令里写成 "$TARGET:latest"（zsh 把 :l 当成
-#    「转小写」修饰符，把 tag 变成 growtreeatest:latest），latest 没更新，
+#    「转小写」修饰符，把 tag 变成 manalongatest:latest），latest 没更新，
 #    结果所有用户点「立即升级」都无效——watchtower 拉回来的还是旧镜像。
 if [ -z "${D_VER}" ] || [ "${D_VER}" != "${D_LATEST}" ]; then
   echo "✗ latest 与 ${VER} 指向的清单不一致！用户的一键升级会拉到旧镜像。" >&2

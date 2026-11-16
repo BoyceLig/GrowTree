@@ -27,10 +27,14 @@ RUN npm ci --no-audit --no-fund
 
 # 复制源码
 COPY server/ ./server/
-# 前端使用预构建的 dist，不在 Docker 内重新编译（避免环境差异导致 UI 不一致）
-COPY web/dist/ ./web/dist/
+# 前端源码进镜像，在容器内编译：任何构建路径都绕不开这里，永远拿当前源码。
+# （.dockerignore 排除 web/dist / web/android / tsconfig.tsbuildinfo）
+COPY web/ ./web/
 
-# 只构建服务端
+# 前端：vue-tsc 类型检查 + vite 打包（产物进 web/dist）
+RUN npm run build --workspace web
+
+# 服务端
 RUN npm run build --workspace server
 
 # 清除 dev 依赖，只保留生产依赖（已编译的 native 模块会保留）
@@ -42,8 +46,8 @@ FROM docker.1ms.run/library/node:20-alpine AS runtime
 # 版本号：由 scripts/docker-build.sh 传入（--build-arg VERSION=20261009）
 ARG VERSION=dev
 ARG BUILD_DATE=unknown
-LABEL org.opencontainers.image.title="growtree" \
-      org.opencontainers.image.description="成长树 - 家庭积分管理系统" \
+LABEL org.opencontainers.image.title="manalong" \
+      org.opencontainers.image.description="满伴成长树 - 家庭积分管理系统" \
       org.opencontainers.image.version="$VERSION" \
       org.opencontainers.image.created="$BUILD_DATE" \
       org.opencontainers.image.source="local-build"
@@ -66,7 +70,7 @@ COPY server/src/db/schema.sql ./server/src/db/schema.sql
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV DATA_DIR=/app/data
-ENV PIGGY_VERSION=$VERSION
+ENV MANALONG_VERSION=$VERSION
 # 容器内没有 tzdata 时 TZ 不生效，「今日」统计会按 UTC 天切分（比北京时间早 8 小时）
 RUN apk add --no-cache tzdata
 ENV TZ=Asia/Shanghai

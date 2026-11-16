@@ -1,5 +1,5 @@
 #!/bin/bash
-# 成长树 · 应用生命周期主脚本
+# 满伴成长树 · 应用生命周期主脚本
 #
 # Docker 应用的 start/stop 由应用中心执行 compose 管理，这里写什么都不会被执行
 # （官方明确：默认无需定义启停逻辑）；本脚本真正有意义的只有 status ——
@@ -13,7 +13,7 @@ is_docker_running() {
     DOCKER_NAME=""
 
     if [ -f "$FILE_PATH" ]; then
-        # 从 compose 里取 container_name（app/docker/docker-compose.yaml 固定为 growtree）
+        # 从 compose 里取 container_name（app/docker/docker-compose.yaml 固定为 manalong）
         DOCKER_NAME=$(cat "$FILE_PATH" | grep "container_name" | awk -F ':' '{print $2}' | xargs)
     fi
 

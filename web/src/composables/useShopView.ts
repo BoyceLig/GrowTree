@@ -3,7 +3,7 @@ import { ref, watch, type Ref } from 'vue';
 /** 商城显示样式：列表（一行一件）或网格（卡片平铺） */
 export type ShopView = 'list' | 'grid';
 
-const STORAGE_PREFIX = 'piggy-shop-view';
+const STORAGE_PREFIX = 'manalong-shop-view';
 
 /**
  * 商城显示样式偏好（家长端 / 孩子端各存一份，互不干扰）。

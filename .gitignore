@@ -60,7 +60,7 @@ Thumbs.db
 .gitee-cloud-remote
 
 # 发布工作树（publish-oss.sh 用的公开仓库克隆，位于工作区根、不在本仓库内）
-.growtree-oss/
+.manalong-oss/
 
 # 子项目的构建产物
 # 这里**不要**再逐条列商业版子目录（miniprogram/dist、admin/dist 之类）：

@@ -132,9 +132,9 @@ async function loginChild() {
 
     <div class="login-card glass-strong">
       <div class="brand">
-        <img class="logo" src="/growtree.png" alt="成长树" />
-        <h1 class="title">成长树</h1>
-        <p class="subtitle">GrowTree · 家庭积分管家</p>
+        <img class="logo" src="/manalong.png" alt="满伴" />
+        <h1 class="title">满伴</h1>
+        <p class="subtitle">ManAlong · 家庭积分管家</p>
       </div>
 
       <!-- 同一个浏览器可以同时保留家长和孩子两份登录态 -->

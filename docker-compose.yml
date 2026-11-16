@@ -1,19 +1,19 @@
 services:
-  growtree:
+  manalong:
     # ── 镜像版 ────────────────────────────────────────────────
     # 默认直接用本地已构建好的镜像启动，不会再编译。
     # 镜像缺失时（首次部署）才会走 build 现场构建。
-    # 切版本 / 回滚：PIGGY_VERSION=20261008 docker compose up -d
+    # 切版本 / 回滚：MANALONG_VERSION=20261008 docker compose up -d
     #               或 bash scripts/docker-up.sh 20261008
-    image: growtree:${PIGGY_VERSION:-latest}
+    image: manalong:${MANALONG_VERSION:-latest}
     build:
       context: .
       args:
-        VERSION: ${PIGGY_VERSION:-latest}
-    container_name: growtree
+        VERSION: ${MANALONG_VERSION:-latest}
+    container_name: manalong
     restart: unless-stopped
     ports:
-      - "${PIGGY_PORT:-3000}:3000"
+      - "${MANALONG_PORT:-3000}:3000"
     volumes:
       - ./data:/app/data
     environment:

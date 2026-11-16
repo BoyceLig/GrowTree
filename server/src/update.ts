@@ -8,7 +8,7 @@
  *      （Watchtower 镜像同样托管在同一个 ACR 仓库里，国内可直连）
  *
  * 两个环境变量的作用：
- *   PIGGY_VERSION   当前运行的版本号（Dockerfile 里 ENV PIGGY_VERSION=$VERSION 注入）
+ *   MANALONG_VERSION   当前运行的版本号（Dockerfile 里 ENV MANALONG_VERSION=$VERSION 注入）
  *   WATCHTOWER_URL  Watchtower 的 HTTP API 地址，默认 http://watchtower:8080
  *                   （compose 里没加 watchtower 服务时，探测失败 → 前端自动降级为
  *                    "给命令让用户自己执行"，不会白屏、不会报错）
@@ -39,20 +39,20 @@ export interface VersionInfo {
 }
 
 function registryHost(): string {
-  return process.env.PIGGY_UPDATE_REGISTRY || DEFAULT_REGISTRY;
+  return process.env.MANALONG_UPDATE_REGISTRY || DEFAULT_REGISTRY;
 }
-/** 默认 https；本地/内网自建 registry 可设 PIGGY_UPDATE_SCHEME=http */
+/** 默认 https；本地/内网自建 registry 可设 MANALONG_UPDATE_SCHEME=http */
 function registryScheme(): string {
-  return process.env.PIGGY_UPDATE_SCHEME || 'https';
+  return process.env.MANALONG_UPDATE_SCHEME || 'https';
 }
 function registryBase(): string {
   return `${registryScheme()}://${registryHost()}`;
 }
 function repoName(): string {
-  return process.env.PIGGY_UPDATE_REPO || DEFAULT_REPO;
+  return process.env.MANALONG_UPDATE_REPO || DEFAULT_REPO;
 }
 export function currentVersion(): string {
-  return process.env.PIGGY_VERSION || 'dev';
+  return process.env.MANALONG_VERSION || 'dev';
 }
 
 /** 把 20261009 / 20261009-2 拆成可比较的数字对 */
@@ -152,7 +152,7 @@ function watchtowerUrl(): string {
   return url.replace(/\/+$/, '');
 }
 
-const MANUAL_COMMAND = 'docker compose pull growtree && docker compose up -d growtree';
+const MANUAL_COMMAND = 'docker compose pull manalong && docker compose up -d manalong';
 
 // ── 10 分钟内存缓存：镜像仓库经公网访问，别每次打开页面都打一遍 ──
 let cache: { at: number; value: VersionInfo } | null = null;

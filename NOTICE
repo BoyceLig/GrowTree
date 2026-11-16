@@ -1,15 +1,40 @@
-GrowTree（成长树）— 版权与署名说明
+满伴成长树（ManAlong）— 版权与署名说明
+作者：BoyceLig　微信：Boyce_Lig
+仓库：https://github.com/BoyceLig/ManAlong
 =====================================
 
-1. 本项目当前版本以 BSL 1.1（Business Source License 1.1）发布，
-   许可条款见同目录 LICENSE 文件。版权所有 (c) 2026 风雨潇潇。
+1. 本项目的版权与许可
 
-2. 上游项目致谢（MIT 声明，依许可证要求保留）
+   本项目当前版本以 BSL 1.1（Business Source License 1.1）发布，
+   许可条款见同目录 LICENSE 文件。
+   版权所有 (c) 2026 BoyceLig。保留所有权利。
 
-   本项目基于 piggy-bank（存钱罐）项目修改而来：
-   https://github.com/ASH-C776/piggy-bank （作者：基耶杰）
+   个人 / 家庭自托管可永久免费使用、修改、分发修改版；
+   公司、组织等商业性生产使用需先取得作者书面授权
+   （微信 Boyce_Lig，或仓库 Issues）。
 
-   该上游代码采用 MIT License 发布，原始声明如下：
+2. 上游许可链（依许可证要求保留）
+
+   本项目是在两位作者的开源作品之上二次开发的：
+
+   ① piggy-bank（存钱罐）· 基耶杰 · MIT License
+      https://github.com/ASH-C776/piggy-bank
+       → 家庭积分 / 任务 / 兑换的雏形与前后端骨架
+
+   ② 成长树 GrowTree · 风雨潇潇 · BSL 1.1
+      https://gitee.com/wdcasc/growtree
+       → 改名「成长树」、界面重做、生肖头像、成长曲线、多家长账号等
+       → 本项目保留其 BSL 1.1 署名与 Change Date（2029-10-09）
+
+   ③ 满伴成长树 ManAlong · BoyceLig · BSL 1.1（本仓库）
+      https://github.com/BoyceLig/ManAlong
+       → 日历与特殊日、成长日记、背包、树洞 / 悄悄话 / 心愿单、
+         周期任务、操作历史等
+
+   上游作品以 MIT 发布的部分，其原始声明见下节；以 BSL 1.1 发布的部分，
+   本项目继续以 BSL 1.1 发布并保留原署名。以上声明不得删除。
+
+3. piggy-bank 的原始 MIT 声明（原样保留）
 
    ------------------------------------------------------------------
    MIT License
@@ -35,18 +60,18 @@ GrowTree（成长树）— 版权与署名说明
    SOFTWARE.
    ------------------------------------------------------------------
 
-3. 字体与第三方依赖
+4. 字体与第三方依赖
 
    · 前端自托管字体（zcool-kuaile / quicksand）的来源与许可证
      见 scripts/build-fonts.sh 内注释。
    · 其余依赖的许可证以各依赖仓库声明为准（可用
      `npx license-checker` 自查）。
 
-4. 升级执行器 Watchtower（随镜像仓库一并分发，原样未修改）
+5. 升级执行器 Watchtower（随镜像仓库一并分发，原样未修改）
 
    「一键升级」功能依赖 Watchtower 完成拉取新镜像与重建容器。
-   因其官方镜像托管在 Docker Hub（国内网络无法直接拉取），本项目将
-   官方镜像原样搬运到自有镜像仓库 `wdcasc/watchtower` 供用户拉取。
+   因其官方镜像托管在 Docker Hub（国内网络无法直接拉取），本项目沿用
+   上游的镜像搬运方式，将官方镜像原样搬运到自有镜像仓库供用户拉取。
 
    项目：Watchtower（维护分支）
    https://github.com/nicholas-fedor/watchtower

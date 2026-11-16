@@ -2,13 +2,13 @@
  * 更新日志的解析与获取
  * ============================================================
  * 两个消费方：
- *   1) 「关于成长树」页 —— 读**镜像里**的 CHANGELOG.md（本项目自带的记录）
+ *   1) 「关于满伴成长树」页 —— 读**镜像里**的 CHANGELOG.md（本项目自带的记录）
  *   2) 「更新提示条 → 查看更新」—— 读**代码仓库里**的最新 CHANGELOG.md
  *      （新版本的说明还没进当前镜像，只能从远端拿；仓库是公开的，匿名可读）
  *
  * 解析规则见 parseChangelog 的注释，改 CHANGELOG.md 标题格式时请同步这里。
  */
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { projectRoot } from './config.js';
 
@@ -110,21 +110,36 @@ export function parseChangelog(md: string): ChangeVersion[] {
 
 const CHANGELOG_FILE = join(projectRoot, 'CHANGELOG.md');
 
-/** CHANGELOG 在镜像里是静态文件，读一次就够；读不到也缓存，避免每次请求都打日志 */
+/**
+ * 镜像里 CHANGELOG 是静态文件，可以缓存；但开发环境下这个文件会被人手动改，
+ * 只认第一次读取会让「关于」页一直显示改之前的旧内容。所以缓存带上文件 mtime，
+ * 文件一变就重新解析（生产环境 mtime 不变，等于没有额外开销）。
+ */
 let localCache: ChangeVersion[] | null = null;
+let localMtimeMs = -1;
 
 export function loadLocalChangelog(): ChangeVersion[] {
-  if (localCache) return localCache;
+  let mtimeMs = -1;
+  try {
+    mtimeMs = statSync(CHANGELOG_FILE).mtimeMs;
+  } catch {
+    // 文件不存在时按空处理，下面分支会给出空数组
+  }
+
+  if (localCache && mtimeMs === localMtimeMs) return localCache;
+
   try {
     localCache = existsSync(CHANGELOG_FILE)
       ? parseChangelog(readFileSync(CHANGELOG_FILE, 'utf-8'))
       : [];
+    localMtimeMs = mtimeMs;
     if (localCache.length === 0) {
       console.warn(`[changelog] 未读到更新日志：${CHANGELOG_FILE}`);
     }
   } catch (err) {
     console.warn('[changelog] 解析更新日志失败：', err);
     localCache = [];
+    localMtimeMs = mtimeMs;
   }
   return localCache;
 }
@@ -135,13 +150,13 @@ export function loadLocalChangelog(): ChangeVersion[] {
  * 远端更新日志的来源。默认指向 Gitee 公开仓库的 CHANGELOG.md：
  *   1) raw 直链（最轻量，会 302 到 CDN，fetch 自动跟随）
  *   2) 拉不到时退到 Gitee 开放 API（内容 base64 编码）
- * 自建/换源可设 PIGGY_CHANGELOG_URL 覆盖第 1 个地址。
+ * 自建/换源可设 MANALONG_CHANGELOG_URL 覆盖第 1 个地址。
  */
 const RAW_URL =
-  process.env.PIGGY_CHANGELOG_URL || 'https://gitee.com/wdcasc/growtree/raw/main/CHANGELOG.md';
+  process.env.MANALONG_CHANGELOG_URL || 'https://gitee.com/wdcasc/growtree/raw/main/CHANGELOG.md';
 const API_URL = 'https://gitee.com/api/v5/repos/wdcasc/growtree/contents/CHANGELOG.md';
 
-const FETCH_HEADERS = { 'User-Agent': 'GrowTree-UpdateCheck', Accept: 'text/plain, */*' };
+const FETCH_HEADERS = { 'User-Agent': 'ManAlong-UpdateCheck', Accept: 'text/plain, */*' };
 
 async function fetchText(url: string, timeoutMs: number, asJson = false): Promise<string> {
   const ctl = new AbortController();

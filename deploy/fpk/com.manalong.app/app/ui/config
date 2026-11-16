@@ -1,7 +1,7 @@
 {
   ".url": {
-    "com.growtree.app.main": {
-      "title": "成长树",
+    "com.manalong.app.main": {
+      "title": "满伴成长树",
       "icon": "images/icon_{0}.png",
       "type": "iframe",
       "protocol": "http",

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 成长树 · 脚本自检：本项目的 shell 脚本必须在 macOS 自带的 bash 3.2 上能跑
+# 满伴成长树 · 脚本自检：本项目的 shell 脚本必须在 macOS 自带的 bash 3.2 上能跑
 #
 # 用法： bash scripts/check-bash.sh
 #

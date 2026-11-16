@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">GrowTree</string>
-    <string name="title_activity_main">GrowTree</string>
-    <string name="package_name">com.growtree.app</string>
-    <string name="custom_url_scheme">com.growtree.app</string>
+    <string name="app_name">满伴</string>
+    <string name="title_activity_main">满伴</string>
+    <string name="package_name">com.manalong.app</string>
+    <string name="custom_url_scheme">com.manalong.app</string>
 </resources>

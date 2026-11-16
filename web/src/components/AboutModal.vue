@@ -1,15 +1,15 @@
 <script setup lang="ts">
 /**
- * 「关于成长树」弹窗：版本号 + 检查更新 + 更新内容 + 作者与许可 + 上游致谢。
+ * 「关于满伴成长树」弹窗：版本号 + 检查更新 + 更新内容 + 作者与许可 + 上游致谢。
  *
  * 数据全部来自 `GET /api/about`（后端读镜像里的 CHANGELOG.md），
- * 版本号与「一键升级」同源（PIGGY_VERSION），不会出现两处版本号打架。
+ * 版本号与「一键升级」同源（MANALONG_VERSION），不会出现两处版本号打架。
  *
  * 更新内容固定只显示最近 PREVIEW_COUNT 个版本 —— 更新日志越攒越长，
  * 全铺出来会把「作者与许可」挤到很下面。
  *
- * 「检查更新」不在本组件里自己实现：点一下只把意图交给父级（设置弹窗），
- * 由它关掉两层弹窗后再广播给提示条组件，查版本与升级弹窗始终只有一份实现。
+ * 「检查更新」不在本组件里自己实现：点一下只把意图交给父级（头像菜单里的 Layout），
+ * 由它关掉弹窗后再广播给提示条组件，查版本与升级弹窗始终只有一份实现。
  */
 import { computed, ref, watch } from 'vue';
 import Modal from '@/components/Modal.vue';
@@ -42,7 +42,7 @@ interface AboutInfo {
 const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits<{
   'update:modelValue': [v: boolean];
-  /** 请求检查更新（由父级关闭弹窗后广播 `growtree:check-update`） */
+  /** 请求检查更新（由父级关闭弹窗后广播 `manalong:check-update`） */
   check: [];
 }>();
 
@@ -79,16 +79,16 @@ watch(
 <template>
   <Modal
     :model-value="modelValue"
-    title="关于成长树"
+    title="关于满伴"
     width="480px"
     @update:model-value="emit('update:modelValue', $event)"
   >
     <div class="about">
       <header class="brand">
-        <img class="logo" src="/growtree.png" alt="" />
+        <img class="logo" src="/manalong.png" alt="" />
         <h4>
-          成长树
-          <span class="en">GrowTree</span>
+          满伴
+          <span class="en">ManAlong</span>
         </h4>
         <p class="sub">家庭积分管理系统</p>
         <div class="ver-line">

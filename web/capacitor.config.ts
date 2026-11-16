@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.growtree.app',
-  appName: 'GrowTree',
+  appId: 'com.manalong.app',
+  appName: '满伴',
   webDir: 'dist',
   server: {
     // 内网后端走明文 HTTP：App 页面也用 http://localhost 加载，

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# 成长树 · 打一个可部署到服务器的制品包（在开发机上执行）
+# 满伴成长树 · 打一个可部署到服务器的制品包（在开发机上执行）
 #
 # 用法：
 #   bash scripts/build-release.sh          # 完整部署包（保留扩展模块）
 #   bash scripts/build-release.sh --oss    # 自建版更新包（剥离扩展模块代码）
 #
-# 产出：dist/growtree-<版本>[-oss]-src.tar.gz
+# 产出：dist/manalong-<版本>[-oss]-src.tar.gz
 #
 # ── 为什么用制品包，而不是让服务器 git pull？────────────────────────
 #   1. Docker 构建需要 web/dist，而它是构建产物、不入库（.gitignore 排除了）
@@ -52,10 +52,10 @@ npm run build --workspace server
 echo "== 3/3 打包"
 mkdir -p "$ROOT/dist"
 if [ "$MODE" = "oss" ]; then
-  OUT="$ROOT/dist/growtree-${VERSION}-oss-src.tar.gz"
+  OUT="$ROOT/dist/manalong-${VERSION}-oss-src.tar.gz"
   EXT_EXCLUDES=(--exclude='server/src/ext' --exclude='server/dist/ext')
 else
-  OUT="$ROOT/dist/growtree-${VERSION}-src.tar.gz"
+  OUT="$ROOT/dist/manalong-${VERSION}-src.tar.gz"
   # ⚠️ 这个数组在非 oss 模式下是空的，而 macOS 自带的 bash 3.2 在 `set -u` 下
   #    展开**空数组** `"${EXT_EXCLUDES[@]}"` 会直接报 "unbound variable" 退出
   #    （bash 4+ 才修掉这个行为，不是拼写问题，在 Linux 上跑完全正常）。
@@ -70,8 +70,9 @@ rm -f "$OUT"
 #    macOS 自带的是 bsdtar，它的 --exclude 模式**不锚定在路径开头**：
 #    写 --exclude='./dist' 会把 ./dist、./web/dist、./server/dist 三个一起排掉
 #    （实测三个同时消失，换成 './dist/*' 结果完全一样）。
-#    后果很实在：制品包里没有 web/dist，而 Dockerfile 里是
-#    `COPY web/dist/ ./web/dist/` → 服务器上 docker build 直接失败，
+#    后果很实在：制品包里没有 web/dist（如今镜像虽会在容器内重新编译前端，
+#    但产物缺失=本地构建失败的信号，自检会拦下），早期 Dockerfile 是
+#    `COPY web/dist/ ./web/dist/` 时更是在服务器上 docker build 直接失败。
 #    整个制品包等于废的，而且要到服务器上才炸。
 #    ⇒ 所以改成：显式列出要打包的顶层条目，跳过不该进包的。
 #
@@ -97,7 +98,7 @@ tar czf "$OUT" \
   "${EXT_EXCLUDES[@]+"${EXT_EXCLUDES[@]}"}" \
   -C "$ROOT" "${TOPS[@]}"
 
-TARLIST="$(mktemp -t growtree-tarlist)"
+TARLIST="$(mktemp -t manalong-tarlist)"
 tar tzf "$OUT" > "$TARLIST"
 
 echo
@@ -105,19 +106,19 @@ SIZE="$(du -h "$OUT" | awk '{print $1}')"
 echo "✓ 制品包：$OUT  （${SIZE}）"
 echo
 
-# 交付前自检 1：镜像构建必需的产物必须在包里。
-# 专门盯「web/dist 被误排除」这类问题 —— 光看包体积看不出来，
-# 要等传到服务器上 docker build 才炸，那时候已经离开发机很远了。
+# 交付前自检 1：构建产物必须在包里。
+# 前后端虽然已改为 Dockerfile 容器内编译（源码在包里就能构建镜像），
+# 但产物缺失意味着本地构建半途失败 —— 在这里拦下，别把半成品包传出去。
 MISSING=""
 for need in './web/dist/index.html' './server/dist/index.js'; do
   grep -qxF "$need" "$TARLIST" || MISSING="$MISSING $need"
 done
 if [ -n "$MISSING" ]; then
-  echo "✗ 制品包里缺少镜像构建必需的产物：$MISSING" >&2
-  echo "  服务器上 docker build 会失败（Dockerfile 里 COPY 的正是它们）" >&2
+  echo "✗ 制品包里缺少构建产物：$MISSING" >&2
+  echo "  说明本地构建未完成，请先排查 npm run build 为何失败" >&2
   rm -f "$OUT" "$TARLIST"; exit 1
 fi
-echo "✓ 前后端构建产物都在包里（镜像可构建）"
+echo "✓ 前后端构建产物都在包里"
 
 # 交付前自检 2：绝不能把真实数据打进去
 BAD="$(grep -Ec '(^|/)(data|data-[^/]*)/|\.db(-shm|-wal)?$|/uploads/|(^|/)\.env$' "$TARLIST" || true)"

@@ -6,8 +6,13 @@ server/dist
 # 真实数据与备份目录绝不进镜像
 data
 data-backup*
-# 前端只 COPY web/dist，源码不必进构建上下文
-web/src
+# 前端改为镜像内编译：源码必须进构建上下文，但排除——
+#   web/dist                  本地旧构建产物（容器内会重新编译，绝不复用）
+#   web/android               Capacitor 安卓工程，与 Web 镜像无关
+#   web/tsconfig.tsbuildinfo  tsc 增量缓存，拷进去可能干扰容器内全新编译
+web/dist
+web/android
+web/tsconfig.tsbuildinfo
 docs
 deploy
 release

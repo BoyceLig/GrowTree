@@ -4,7 +4,7 @@
 # FnDepot V2 规范（EWEDLCM/FnDepot README「外部应用源 V2 编写说明」）要点：
 #   - GitHub + Public，仓库名必须严格为 FnDepot，默认分支 main，根目录必须有 fnpack.json
 #   - fnpack.json 必须是 V2：schema_version 精确为字符串 "2" + source_info + apps
-#   - apps 的键名必须与 FPK manifest 里的 appname 完全一致（V2 允许点号，如 com.growtree.app）
+#   - apps 的键名必须与 FPK manifest 里的 appname 完全一致（V2 允许点号，如 com.manalong.app）
 #   - categories 只能用固定分类（影音娱乐/系统工具/编程开发/AI赋能/生活服务/智能智控/教育学习/游戏地带/硬件驱动）
 #   - 每个 packages 分支都应带 download_url + sha256 + size（size 单位是字节，整数）
 #
@@ -20,15 +20,15 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${1:-$ROOT/.workbuddy/fndepot-repo}"
 
 SRC_STORE="$ROOT/deploy/fndepot"            # 源文件：fnpack.template.json、应用 README
-SRC_FPK_DIR="$ROOT/deploy/fpk/com.growtree.app"
+SRC_FPK_DIR="$ROOT/deploy/fpk/com.manalong.app"
 SRC_SHOTS="$ROOT/docs/screenshots"
 
 fail() { echo "[FAIL] $*" >&2; exit 1; }
 
 # --- 前置检查 ---------------------------------------------------------------
 [ -f "$SRC_STORE/fnpack.template.json" ] || fail "缺少 $SRC_STORE/fnpack.template.json"
-[ -f "$SRC_STORE/growtree/README.md" ] || fail "缺少应用 README.md"
-[ -f "$SRC_FPK_DIR/com.growtree.app.fpk" ] || fail "缺少 fpk 产物，请先在 deploy/fpk/com.growtree.app 执行 fnpack build"
+[ -f "$SRC_STORE/manalong/README.md" ] || fail "缺少应用 README.md"
+[ -f "$SRC_FPK_DIR/com.manalong.app.fpk" ] || fail "缺少 fpk 产物，请先在 deploy/fpk/com.manalong.app 执行 fnpack build"
 [ -f "$SRC_FPK_DIR/ICON_256.PNG" ] || fail "缺少 ICON_256.PNG"
 [ -d "$SRC_SHOTS" ] || fail "缺少截图目录 docs/screenshots"
 
@@ -42,7 +42,7 @@ esac
 
 # --- 清理旧产物（保留 .git，否则会丢掉远端配置）------------------------------
 mkdir -p "$OUT"
-rm -rf "$OUT/growtree" "$OUT/fnpack.json"
+rm -rf "$OUT/manalong" "$OUT/fnpack.json"
 
 # --- 从 manifest 读取构建值，生成 fnpack.json --------------------------------
 PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python - "$SRC_FPK_DIR" "$SRC_STORE/fnpack.template.json" "$OUT" <<'PYEOF'
@@ -62,7 +62,7 @@ with open(os.path.join(fpk_dir, 'manifest'), encoding='utf-8') as f:
         man[k.strip()] = v.strip()
 
 # 版本号唯一真源：仓库根目录的 VERSION（形如 20261010-5）。
-# fpk 目录在 deploy/fpk/com.growtree.app，仓库根 = 向上三级。
+# fpk 目录在 deploy/fpk/com.manalong.app，仓库根 = 向上三级。
 # 读不到时退回 manifest 里的 version，保证单独打包也能跑。
 ver_file = os.path.abspath(os.path.join(fpk_dir, '..', '..', '..', 'VERSION'))
 if os.path.exists(ver_file):
@@ -79,7 +79,7 @@ if missing:
     print(f"✗ manifest 缺少字段: {missing}"); sys.exit(1)
 
 # fpk 校验值
-fpk_path = os.path.join(fpk_dir, 'com.growtree.app.fpk')
+fpk_path = os.path.join(fpk_dir, 'com.manalong.app.fpk')
 sha256 = hashlib.sha256(open(fpk_path, 'rb').read()).hexdigest()
 size = os.path.getsize(fpk_path)
 
@@ -146,10 +146,10 @@ PYEOF
 [ -f "$OUT/fnpack.json" ] || fail "fnpack.json 生成失败"
 
 # --- 组装其余文件 -----------------------------------------------------------
-APP_NAME="growtree"   # 仓库内目录名（目录结构 V2 不强制，保持历史布局）
+APP_NAME="manalong"   # 仓库内目录名（目录结构 V2 不强制，保持历史布局）
 mkdir -p "$OUT/$APP_NAME/Preview"
 cp "$SRC_STORE/$APP_NAME/README.md"     "$OUT/$APP_NAME/README.md"
-cp "$SRC_FPK_DIR/com.growtree.app.fpk" "$OUT/$APP_NAME/$APP_NAME.fpk"
+cp "$SRC_FPK_DIR/com.manalong.app.fpk" "$OUT/$APP_NAME/$APP_NAME.fpk"
 cp "$SRC_FPK_DIR/ICON_256.PNG"          "$OUT/$APP_NAME/ICON.PNG"
 cp "$SRC_SHOTS/"*.jpg                   "$OUT/$APP_NAME/Preview/"
 

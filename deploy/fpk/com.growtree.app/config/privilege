@@ -1,7 +1,0 @@
-{
-  "defaults": {
-    "run-as": "package"
-  },
-  "username": "growtree-app",
-  "groupname": "growtree-app"
-}

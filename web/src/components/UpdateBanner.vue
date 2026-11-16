@@ -114,7 +114,7 @@ function upgradeFromChangelog() {
   onUpgradeClick();
 }
 
-const DISMISS_KEY = 'growtree:update-dismissed';
+const DISMISS_KEY = 'manalong:update-dismissed';
 
 async function check(opts: { silent?: boolean; force?: boolean } = {}) {
   if (!opts.silent) checking.value = true;
@@ -144,7 +144,7 @@ function dismiss() {
 }
 
 async function onUpgradeClick() {
-  manualCmd.value = status.value?.manualCommand || 'docker compose pull growtree && docker compose up -d growtree';
+  manualCmd.value = status.value?.manualCommand || 'docker compose pull manalong && docker compose up -d manalong';
   copied.value = false;
   manualReason.value = '当前服务器没有启用一键升级，请登录部署设备执行下面这条命令：';
   manualHint.value =
@@ -244,12 +244,12 @@ function onSettingsCheck() {
 
 onMounted(() => {
   check({ silent: true });
-  window.addEventListener('growtree:check-update', onSettingsCheck);
+  window.addEventListener('manalong:check-update', onSettingsCheck);
 });
 
 onUnmounted(() => {
   disposed = true;
-  window.removeEventListener('growtree:check-update', onSettingsCheck);
+  window.removeEventListener('manalong:check-update', onSettingsCheck);
 });
 </script>
 
@@ -279,7 +279,7 @@ onUnmounted(() => {
     <div v-else class="cl-body">
       <p v-if="cl && !cl.ok" class="cl-warn">
         ⚠️ {{ cl.error || '暂时获取不到更新说明' }}。下面显示的是当前已安装版本的记录，
-        升级后可在「设置 → 关于成长树」查看完整更新日志。
+        升级后可在「设置 → 关于满伴」查看完整更新日志。
       </p>
 
       <template v-if="clVersion">
@@ -298,7 +298,7 @@ onUnmounted(() => {
         </div>
 
         <p v-if="!clIsTarget" class="cl-note">仓库里的更新说明还没写到 v{{ status?.latest }}，先看看最近这版。</p>
-        <p v-else class="cl-note">更早的版本可在「设置 → 关于成长树」里查看。</p>
+        <p v-else class="cl-note">更早的版本可在「设置 → 关于满伴」里查看。</p>
       </template>
 
       <p v-else class="cl-state">这个版本没有附带更新说明</p>

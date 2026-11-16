@@ -1,15 +1,15 @@
-# 成长树 · 飞牛 fpk 容器编排
+# 满伴成长树 · 飞牛 fpk 容器编排
 #
 # 与仓库根部的 docker-compose.yml 的区别：
 #   1. 没有 build: —— 飞牛安装 fpk 时不会现场构建，镜像从公共仓库拉取
 #      （镜像地址见下方 image，发布新版本时先 push 再改这里）
 #   2. 数据卷不用宿主机相对路径，挂到飞牛托管的 ${TRIM_PKGVAR}/data
 #      —— 升级/覆盖安装不丢数据，卸载重装也还在
-#   3. container_name 固定为 growtree，cmd/main 靠它检查运行状态，别随手改
+#   3. container_name 固定为 manalong，cmd/main 靠它检查运行状态，别随手改
 services:
-  growtree:
+  manalong:
     image: crpi-q6m49k4ufbvik9l5.cn-hangzhou.personal.cr.aliyuncs.com/wdcasc/growtree:20261016
-    container_name: growtree
+    container_name: manalong
     restart: unless-stopped
     ports:
       - "3000:3000"

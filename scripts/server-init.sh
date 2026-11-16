@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 成长树 · 服务器初始化（Ubuntu / Debian，在服务器上以 root 执行）
+# 满伴成长树 · 服务器初始化（Ubuntu / Debian，在服务器上以 root 执行）
 #
 # 用法：
 #   bash server-init.sh              # 基础初始化：装 Docker、加 swap、建目录、装 fail2ban
@@ -13,9 +13,9 @@
 # 加 2G swap 后构建能跑完，只是慢一点。
 set -euo pipefail
 
-APP_DIR="${GROWTREE_APP_DIR:-/data/growtree}"
-BACKUP_DIR="$(dirname "$APP_DIR")/growtree-backups"
-SWAP_SIZE="${GROWTREE_SWAP_SIZE:-2G}"
+APP_DIR="${MANALONG_APP_DIR:-/data/manalong}"
+BACKUP_DIR="$(dirname "$APP_DIR")/manalong-backups"
+SWAP_SIZE="${MANALONG_SWAP_SIZE:-2G}"
 
 log()  { printf '· %s\n' "$*"; }
 ok()   { printf '✓ %s\n' "$*"; }
@@ -84,7 +84,7 @@ fi
 log "创建部署目录"
 mkdir -p "$APP_DIR/dist" "$BACKUP_DIR"
 ok "$APP_DIR        ← 代码与 data/"
-ok "$APP_DIR/dist   ← 放制品包 growtree-*-src.tar.gz"
+ok "$APP_DIR/dist   ← 放制品包 manalong-*-src.tar.gz"
 ok "$BACKUP_DIR     ← 数据备份（保留最近 7 份）"
 
 # ── 5. fail2ban ─────────────────────────────────────────────────────

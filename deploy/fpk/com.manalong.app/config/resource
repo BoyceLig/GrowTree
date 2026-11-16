@@ -2,7 +2,7 @@
   "docker-project": {
     "projects": [
       {
-        "name": "growtree",
+        "name": "manalong",
         "path": "docker"
       }
     ]

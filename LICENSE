@@ -2,17 +2,21 @@ Business Source License 1.1
 
 Parameters
 
-Licensor:             风雨潇潇
-Licensed Work:        GrowTree（成长树）— 家庭积分管理系统
+Licensor:             BoyceLig（满伴成长树 · ManAlong）
+Licensed Work:        ManAlong（满伴成长树）— 家庭积分管理系统
+                      本项目基于 风雨潇潇 的 GrowTree（成长树，同样以 BSL 1.1 发布）
+                      二次开发；上游又源自 基耶杰 的 piggy-bank（MIT）。
                       本 License 适用于该项目的全部源代码及其构建产物，
-                      自版本 growtree-20261009 起生效。
+                      自版本 manalong-20261116 起生效。
 Additional Use Grant: 个人及家庭场景的部署与使用（含自托管、复制、修改、
                       分发修改版）无需授权、永久免费。
                       任何公司、组织或机构将本作品用于商业性生产环境
                       （包括但不限于：作为商业服务对外提供、在商业产品中
                       集成分发、以盈利为目的的内部生产使用），必须事先
                       取得 Licensor 的书面商业授权。
-                      联系方式：微信：wdcasc
+                      联系方式：微信：Boyce_Lig
+                      仓库：https://github.com/BoyceLig/ManAlong
+                      上游署名与第三方许可见同目录 NOTICE。
 Change Date:          2029-10-09
 Change License:       GNU General Public License, version 3.0 or later
                       (GPL-3.0-or-later)

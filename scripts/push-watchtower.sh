@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 成长树 · 把 watchtower 升级执行器搬运到自己的镜像仓库
+# 满伴成长树 · 把 watchtower 升级执行器搬运到自己的镜像仓库
 #
 # 为什么要搬：一键升级依赖 watchtower 容器，而它在 Docker Hub 上，
 # 国内（尤其 NAS 环境）拉不动。搬到同一个阿里云仓库后，用户 `docker compose up -d`

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# 成长树 · 镜像版一键构建
+# 满伴成长树 · 镜像版一键构建
 #
 # 用法（在 NAS 的项目目录下执行）：
 #   bash scripts/docker-build.sh              # 构建镜像 + 启动容器（默认行为）
 #   bash scripts/docker-build.sh --save       # 构建后额外导出镜像包（可拷到别的机器免编译运行）
 #   bash scripts/docker-build.sh --no-up      # 只构建镜像，不启动容器
-#   PIGGY_VERSION=20261009 bash scripts/docker-build.sh
+#   MANALONG_VERSION=20261009 bash scripts/docker-build.sh
 #
-# 版本号取值优先级：命令行环境变量 PIGGY_VERSION > 项目根目录 VERSION 文件 > latest
+# 版本号取值优先级：命令行环境变量 MANALONG_VERSION > 项目根目录 VERSION 文件 > latest
 set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,17 +25,15 @@ for arg in ${1+"$@"}; do
   esac
 done
 
-VERSION="${PIGGY_VERSION:-$(tr -d '[:space:]' < VERSION 2>/dev/null || true)}"
+VERSION="${MANALONG_VERSION:-$(tr -d '[:space:]' < VERSION 2>/dev/null || true)}"
 VERSION="${VERSION:-latest}"
 BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 command -v docker >/dev/null || { echo "✗ 没找到 docker，请先安装 Docker" >&2; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "✗ 没找到 docker compose（需要 v2）" >&2; exit 1; }
 
-if [ ! -f web/dist/index.html ]; then
-  echo "✗ 缺少 web/dist/index.html —— 前端还没构建，源码包不完整" >&2
-  exit 1
-fi
+# 前端在 Dockerfile 构建阶段容器内编译（COPY web/ 源码 + npm run build），
+# 不再要求本地预构建 web/dist —— 任何构建路径都会拿到当前源码的最新前端。
 echo "== 构建版本：${VERSION} （构建时间 ${BUILD_DATE}）"
 
 # 1) 构建镜像：同一份镜像打两个 tag —— 版本 tag 用于回滚，latest 供 compose 默认使用
@@ -47,25 +45,25 @@ docker build \
   --sbom=false \
   --build-arg "VERSION=$VERSION" \
   --build-arg "BUILD_DATE=$BUILD_DATE" \
-  -t "growtree:$VERSION" \
-  -t "growtree:latest" \
+  -t "manalong:$VERSION" \
+  -t "manalong:latest" \
   .
-echo "== 镜像就绪：growtree:$VERSION / growtree:latest"
-docker images growtree --format '{{.Repository}}:{{.Tag}}  {{.Size}}'
+echo "== 镜像就绪：manalong:$VERSION / manalong:latest"
+docker images manalong --format '{{.Repository}}:{{.Tag}}  {{.Size}}'
 
 # 2) 可选导出：导出的镜像包拷到任意一台装了 Docker 的机器 docker load 即可运行，无需再编译
 if [ "$DO_SAVE" = "1" ]; then
-  OUT="../growtree-image-$VERSION.tar.gz"
+  OUT="../manalong-image-$VERSION.tar.gz"
   echo "== 导出镜像包 → ${OUT} （约几百 MB，耐心等）"
-  docker save "growtree:$VERSION" | gzip -1 > "$OUT"
+  docker save "manalong:$VERSION" | gzip -1 > "$OUT"
   ls -lh "$OUT"
 fi
 
 # 3) 启动：镜像已在本地，compose 直接拿来用，不会再编译
 if [ "$DO_UP" = "1" ]; then
   echo "== 启动容器"
-  PIGGY_VERSION="$VERSION" docker compose up -d
-  PORT="${PIGGY_PORT:-3000}"
+  MANALONG_VERSION="$VERSION" docker compose up -d
+  PORT="${MANALONG_PORT:-3000}"
   echo -n "== 等待服务就绪 "
   for i in $(seq 1 30); do
     if curl -fsS -o /dev/null "http://127.0.0.1:${PORT}/" 2>/dev/null; then

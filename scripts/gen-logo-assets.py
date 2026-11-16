@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""成长树 LOGO 资产生成：从源 LOGO 生成 web/favicon、安卓图标、启动图、fpk 图标。"""
+"""满伴成长树 LOGO 资产生成：从源 LOGO 生成 web/favicon、安卓图标、启动图、fpk 图标。"""
 import os
 from PIL import Image, ImageDraw, ImageOps
 
@@ -27,7 +27,7 @@ def circle_mask(img):
 
 # ── 1. web/public：主 logo（512，favicon/appletouch 共用） ──────────────
 pub = os.path.join(ROOT, 'web', 'public')
-logo.resize((512, 512), Image.LANCZOS).save(os.path.join(pub, 'growtree.png'), optimize=True)
+logo.resize((512, 512), Image.LANCZOS).save(os.path.join(pub, 'manalong.png'), optimize=True)
 logo.resize((180, 180), Image.LANCZOS).save(os.path.join(pub, 'apple-touch-icon.png'), optimize=True)
 
 # ── 2. 安卓 mipmap：legacy launcher 图标（全出血；round 加圆形蒙版） ──
@@ -67,7 +67,7 @@ for dirpath, _, files in os.walk(res):
         paste_center(canvas, logo, 0.28 if w >= h else 0.24).save(p)
 
 # ── 4. 飞牛 fpk 图标 ──────────────────────────────────────────────────
-fpk = os.path.join(ROOT, 'deploy', 'fpk', 'com.growtree.app')
+fpk = os.path.join(ROOT, 'deploy', 'fpk', 'com.manalong.app')
 for name, size in (('ICON.PNG', 64), ('ICON_256.PNG', 256),
                    ('app/ui/images/icon_64.png', 64), ('app/ui/images/icon_256.png', 256)):
     p = os.path.join(fpk, name)

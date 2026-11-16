@@ -4,7 +4,7 @@ setlocal
 cd /d "%~dp0"
 
 echo ============================================
-echo   成长树 - 一键重新打包安卓 APK
+echo   满伴成长树 - 一键重新打包安卓 APK
 echo ============================================
 echo.
 
@@ -42,7 +42,7 @@ if errorlevel 1 (
 echo.
 echo [4/4] 归档到 release 目录 ...
 cd ..\..
-copy /y "web\android\app\build\outputs\apk\debug\app-debug.apk" "release\GrowTree-new.apk" >nul
+copy /y "web\android\app\build\outputs\apk\debug\app-debug.apk" "release\ManAlong-new.apk" >nul
 if errorlevel 1 (
   echo.
   echo *** 复制失败 ***
@@ -53,9 +53,9 @@ if errorlevel 1 (
 echo.
 echo ============================================
 echo   打包完成！
-echo   APK 位置: release\GrowTree-new.apk
+echo   APK 位置: release\ManAlong-new.apk
 echo.
 echo   装到手机: 把该 APK 拖到 "release\安装apk到手机.bat" 上
-echo   或执行:   adb install -r release\GrowTree-new.apk
+echo   或执行:   adb install -r release\ManAlong-new.apk
 echo ============================================
 pause
