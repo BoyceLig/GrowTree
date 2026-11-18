@@ -22,6 +22,7 @@ const navItems: { to: string; label: string; icon: NavIconName }[] = [
   { to: '/child', label: '主页', icon: 'home' },
   { to: '/child/tasks', label: '任务', icon: 'tasks' },
   { to: '/child/growth', label: '成长', icon: 'growth' },
+  { to: '/child/calendar', label: '日历', icon: 'calendar' },
   { to: '/child/shop', label: '商城', icon: 'shop' },
 ];
 

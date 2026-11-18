@@ -216,6 +216,14 @@ export function useWsStore() {
       window.dispatchEvent(new CustomEvent('ws:point_items_changed', { detail: msg }));
     }
 
+    // 日程/特殊日有变动 → 两端日历页静默重拉
+    if (msg.type === 'calendar_changed') {
+      window.dispatchEvent(new CustomEvent('ws:calendar_changed', { detail: msg }));
+    }
+    if (msg.type === 'special_days_changed') {
+      window.dispatchEvent(new CustomEvent('ws:special_days_changed', { detail: msg }));
+    }
+
     // 有人加分/扣分（一键加分、临时加减分）→ 两端首页的积分卡、排行榜、明细都要重拉
     if (msg.type === 'points_changed') {
       if (auth.user?.role === 'child' && msg.userId === auth.user.id) {

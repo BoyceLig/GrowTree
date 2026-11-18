@@ -36,6 +36,27 @@ function findSchemaPath(): string {
   throw new Error('schema.sql not found in any expected location');
 }
 
+/** schema.sql 执行前的补列迁移：旧库缺列时 CREATE INDEX 会报 no such column */
+function ensureColumnsBeforeSchema(database: Database.Database): void {
+  try {
+    const hasTable = database
+      .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='calendar_events' LIMIT 1")
+      .get();
+    if (!hasTable) return; // 新库：schema 会直接建新结构
+
+    const cols = database.prepare("SELECT name FROM pragma_table_info('calendar_events')").all() as {
+      name: string;
+    }[];
+    if (!cols.some((c) => c.name === 'end_date')) {
+      database.exec('ALTER TABLE calendar_events ADD COLUMN end_date TEXT');
+      database.exec('UPDATE calendar_events SET end_date = event_date WHERE end_date IS NULL');
+      console.log('[migration] Added column before schema: calendar_events.end_date');
+    }
+  } catch (e) {
+    console.warn('[migration] pre-schema column check failed:', e);
+  }
+}
+
 export function initDb(dataDir: string): Database.Database {
   const dbPath = join(dataDir, 'money-jar.db');
   db = new Database(dbPath);
@@ -45,6 +66,8 @@ export function initDb(dataDir: string): Database.Database {
   // 加载 schema
   const schemaPath = findSchemaPath();
   const schema = readFileSync(schemaPath, 'utf-8');
+  // 旧库必须先补齐 schema.sql 里索引引用的新列，否则 CREATE INDEX 会直接失败
+  ensureColumnsBeforeSchema(db);
   db.exec(schema);
 
   // 迁移：为旧版 adhoc_task_assignees 添加 accepted_at 字段
@@ -412,6 +435,24 @@ function runMigrations(db: Database.Database): void {
       }
     } catch (e) { /* skip */ }
   }
+
+  // 日历（2026-11-16）：跨天日程 end_date；可见性只保留 public / private。
+  //   SQLite 改不了老表的 CHECK 约束（要重建表），但旧值 parents_only 会被统一转成 private，
+  //   仍然落在原 CHECK 允许范围内，所以不需要重建；新库由 schema.sql 直接建新结构。
+  try {
+    const { c } = db
+      .prepare("SELECT COUNT(*) as c FROM pragma_table_info('calendar_events') WHERE name='end_date'")
+      .get() as { c: number };
+    if (c === 0) {
+      db.exec('ALTER TABLE calendar_events ADD COLUMN end_date TEXT');
+      db.exec('UPDATE calendar_events SET end_date = event_date WHERE end_date IS NULL');
+      console.log('[migration] Added column: calendar_events.end_date');
+    }
+    const r = db.prepare("UPDATE calendar_events SET visibility = 'private' WHERE visibility = 'parents_only'").run();
+    if (r.changes > 0) {
+      console.log(`[migration] calendar_events: ${r.changes} 条 parents_only → private`);
+    }
+  } catch (e) { /* skip */ }
 
   // users.skin（2026-10-20）：皮肤选择。NULL = 跟随默认（家长绿 / 孩子按性别）
   try {

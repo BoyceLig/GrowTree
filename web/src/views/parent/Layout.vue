@@ -20,6 +20,7 @@ const ws = useWsStore();
 // 审核**不在**导航里：它是总览页的一张待办卡片（心愿单 + 商城兑换 + 任务完成合并）。
 const navItems: { to: string; label: string; icon: NavIconName }[] = [
   { to: '/parent', label: '总览', icon: 'home' },
+  { to: '/parent/calendar', label: '日历', icon: 'calendar' },
   { to: '/parent/tasks', label: '任务', icon: 'tasks' },
   { to: '/parent/points', label: '积分', icon: 'points' },
   { to: '/parent/growth', label: '成长', icon: 'growth' },

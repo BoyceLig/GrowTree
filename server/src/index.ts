@@ -22,6 +22,7 @@ import { registerProductsRoutes } from './routes/products.js';
 import { registerProductCategoriesRoutes } from './routes/product-categories.js';
 import { registerExchangeRequestsRoutes } from './routes/exchange-requests.js';
 import { registerBackpackRoutes } from './routes/backpacks.js';
+import { registerCalendarRoutes } from './routes/calendar.js';
 import { registerWishItemsRoutes } from './routes/wish-items.js';
 import { registerWishRequestRoutes } from './routes/wish-requests.js';
 import { registerGrowthRoutes } from './routes/growth.js';
@@ -111,6 +112,7 @@ async function main() {
     registerProductCategoriesRoutes(api);
     registerExchangeRequestsRoutes(api);
     registerBackpackRoutes(api);
+    registerCalendarRoutes(api);
     registerWishItemsRoutes(api);
     registerWishRequestRoutes(api);
     registerGrowthRoutes(api);

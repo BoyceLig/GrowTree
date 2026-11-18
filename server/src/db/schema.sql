@@ -452,6 +452,35 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
+-- 日程（2026-11-14，2026-11-16 改版）：飞书式按参与人组织，任何成员可建，参与人是身份不是归属。
+--   visibility = public 公开（所有人可见）/ private 私有（家长都可见；孩子只看到「私有日程」占位与时间）
+--   跨天：event_date 为开始日期，end_date 为结束日期（不填=同一天；全天/时段均可跨天）。
+--   私有规则见 docs/日历与特殊日功能方案.md §4.1：
+--     创建者与参与的孩子看完整；其他孩子只看到占位卡（无标题/参与人/备注，保留时间）。
+CREATE TABLE IF NOT EXISTS calendar_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  event_date TEXT NOT NULL,           -- 开始日期 YYYY-MM-DD（本地时区）
+  end_date TEXT,                      -- 结束日期 YYYY-MM-DD；NULL = 与 event_date 同一天
+  is_all_day INTEGER NOT NULL DEFAULT 1,
+  start_time TEXT,                    -- 'HH:MM'，全天为 NULL
+  end_time TEXT,
+  note TEXT NOT NULL DEFAULT '',
+  visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'private')),
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS calendar_event_participants (
+  event_id INTEGER NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (event_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_calendar_events_date ON calendar_events(event_date);
+CREATE INDEX IF NOT EXISTS idx_calendar_events_end ON calendar_events(end_date);
+
 -- 特殊日（2026-11-14）：家长专属，重复规则 + 当天积分效果（获得倍率/消耗倍率）。
 --   rule_type = once 单天 / weekly 每周几 / monthly 每月几号 / yearly 每年几月几号
 --   weekdays 1=周一…7=周日；month_days 1-31（小月自动跳过）；yearly_md 'MM-DD'

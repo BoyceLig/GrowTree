@@ -4,7 +4,7 @@
  * 用独立的 <script>（非 setup）导出，是为了让两端 Layout 能把 navItems 里的
  * icon 字段声明成这个联合类型 —— 图标名写错时编译期就报错，而不是渲染成一个空白。
  */
-export type NavIconName = 'home' | 'tasks' | 'points' | 'growth' | 'shop' | 'review' | 'me';
+export type NavIconName = 'home' | 'tasks' | 'points' | 'growth' | 'shop' | 'review' | 'me' | 'calendar';
 </script>
 
 <script setup lang="ts">
@@ -74,6 +74,14 @@ defineProps<{ name: NavIconName }>();
     <template v-else-if="name === 'review'">
       <circle cx="12" cy="12" r="8.7" />
       <path d="m8.2 12.3 2.7 2.7 5-5.5" />
+    </template>
+
+    <!-- 日历：带两个挂耳的月历卡，日期用小点示意 -->
+    <template v-else-if="name === 'calendar'">
+      <rect x="3.6" y="5.2" width="16.8" height="15" rx="2" />
+      <path d="M3.6 9.8h16.8" />
+      <path d="M8.1 3.2v3.4M15.9 3.2v3.4" />
+      <path d="M7.4 13.4h2.2M10.9 13.4h2.2M14.4 13.4h2.2M7.4 16.7h2.2M10.9 16.7h2.2" />
     </template>
 
     <!-- 我的：人形（圆头 + 肩弧）。小程序端 gen-nav-icons.mjs 必须抄同一份路径 -->
