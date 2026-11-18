@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter, RouterView } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useToastStore } from '@/stores/toast';
 import { useWsStore } from '@/stores/ws';
 import ZodiacAvatar from '@/components/ZodiacAvatar.vue';
 import NavIcon, { type NavIconName } from '@/components/NavIcon.vue';
-import SettingsModal from '@/components/SettingsModal.vue';
+import AccountManagerModal from '@/components/AccountManagerModal.vue';
+import AboutModal from '@/components/AboutModal.vue';
 import UpdateBanner from '@/components/UpdateBanner.vue';
 import { ensureCategories } from '@/composables/useCategories';
 
@@ -26,7 +27,11 @@ const navItems: { to: string; label: string; icon: NavIconName }[] = [
 ];
 
 const menuOpen = ref(false);
-const settingsOpen = ref(false);
+const accountsOpen = ref(false);
+const aboutOpen = ref(false);
+
+const identityLabel = computed(() => auth.user?.identity || '家长');
+const roleLabel = computed(() => (auth.user?.isPrimary ? '主账号' : ''));
 
 const avatarRef = ref<HTMLElement | null>(null);
 
@@ -50,9 +55,22 @@ function onDocClick(e: MouseEvent) {
   closeMenu();
 }
 
-function openSettings() {
+function openAccounts() {
   closeMenu();
-  settingsOpen.value = true;
+  accountsOpen.value = true;
+}
+
+function openAbout() {
+  closeMenu();
+  aboutOpen.value = true;
+}
+
+/** 「关于」里的检查更新：先关掉弹窗，再把意图广播给 UpdateBanner */
+function checkUpdate() {
+  aboutOpen.value = false;
+  setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('manalong:check-update'));
+  }, 180);
 }
 
 function logout() {
@@ -93,8 +111,8 @@ onUnmounted(() => {
   <div class="parent-layout">
     <header class="topbar glass">
       <div class="brand">
-        <img class="logo" src="/growtree.png" alt="" />
-        <span class="name">成长树</span>
+        <img class="logo" src="/manalong.png" alt="" />
+        <span class="name">满伴</span>
       </div>
       <div class="spacer"></div>
       <div class="avatar-wrap" ref="avatarRef">
@@ -112,13 +130,19 @@ onUnmounted(() => {
             <div class="menu-header">
               <ZodiacAvatar :zodiac="auth.user?.avatar" :size="48" show-ring />
               <div class="info">
-                <div class="m-name">{{ auth.user?.name }}</div>
-                <div class="m-role">家长账号</div>
+                <div class="m-name">{{ auth.user?.nickname || auth.user?.name }}</div>
+                <div class="m-role">
+                  {{ identityLabel }}<template v-if="roleLabel"> · {{ roleLabel }}</template>
+                </div>
               </div>
             </div>
-            <button class="menu-item" @click="openSettings">
-              <span class="mi-icon">⚙️</span>
-              <span>设置</span>
+            <button class="menu-item" @click="openAccounts">
+              <span class="mi-icon">👥</span>
+              <span>账号管理</span>
+            </button>
+            <button class="menu-item" @click="openAbout">
+              <span class="mi-icon">🌳</span>
+              <span>关于满伴</span>
             </button>
             <div class="menu-divider"></div>
             <button class="menu-item danger" @click="logout">
@@ -153,7 +177,8 @@ onUnmounted(() => {
       </RouterLink>
     </nav>
 
-    <SettingsModal v-model="settingsOpen" />
+    <AccountManagerModal v-model="accountsOpen" />
+    <AboutModal v-model="aboutOpen" @check="checkUpdate" />
   </div>
 </template>
 

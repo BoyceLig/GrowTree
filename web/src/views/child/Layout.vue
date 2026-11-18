@@ -131,8 +131,8 @@ onUnmounted(() => {
     <header class="topbar glass">
       <div style="width:42px"></div>
       <div class="brand">
-        <img class="logo" src="/growtree.png" alt="" />
-        <span class="name">成长树</span>
+        <img class="logo" src="/manalong.png" alt="" />
+        <span class="name">满伴</span>
       </div>
       <div class="avatar-wrap" ref="avatarRef">
         <button

@@ -43,7 +43,8 @@ type Page = 'list' | 'profile' | 'create-sub' | 'edit-sub';
 
 const auth = useAuthStore();
 const toast = useToastStore();
-const { uploading, fileInput, pickImage, onFileChange, ACCEPT } = useImageUpload();
+// 头像只显示几十像素，压缩到长边 512 足够清晰，也省流量
+const { uploading, fileInput, pickImage, onFileChange, ACCEPT } = useImageUpload({ maxEdge: 512 });
 
 const tab = ref<Tab>('parents');
 const page = ref<Page>('list');
@@ -480,7 +481,7 @@ async function doDeleteChild() {
               <button type="button" class="upload-btn" @click="pickImage" :disabled="uploading">
                 {{ uploading ? '上传中...' : '上传自定义头像' }}
               </button>
-              <p class="hint">支持 PNG / JPG / GIF / WebP，3MB 以内</p>
+              <p class="hint">支持 PNG / JPG / GIF / WebP，大图会自动压缩</p>
             </div>
           </div>
           <input

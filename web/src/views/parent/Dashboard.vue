@@ -6,7 +6,6 @@ import { sourceKind } from '@/utils/point-source';
 import GlassCard from '@/components/GlassCard.vue';
 import ZodiacAvatar from '@/components/ZodiacAvatar.vue';
 import EmptyState from '@/components/EmptyState.vue';
-import AccountManagerModal from '@/components/AccountManagerModal.vue';
 import Modal from '@/components/Modal.vue';
 import TreeHoleBox from '@/components/TreeHoleBox.vue';
 import ReviewCenterBox from '@/components/ReviewCenterBox.vue';
@@ -38,7 +37,6 @@ interface Log {
 
 const data = ref<Dashboard | null>(null);
 const loading = ref(true);
-const accountOpen = ref(false);
 
 // 积分记录弹窗
 const logsOpen = ref(false);
@@ -144,9 +142,6 @@ onUnmounted(() => {
         <h1 class="title">总览</h1>
         <p class="subtitle">家庭积分排行</p>
       </div>
-      <button class="btn btn-primary" @click="accountOpen = true">
-        账号管理
-      </button>
     </header>
 
     <!-- 今日统计（点击整卡查看积分记录） -->
@@ -186,7 +181,7 @@ onUnmounted(() => {
       v-else-if="sortedChildren.length === 0"
       emoji="🐣"
       text="还没有小朋友呢"
-      hint="点击右上角新增一个吧~"
+      hint="在右上角「账号管理」里新增一个吧~"
     />
 
     <div v-else class="rank-list">
@@ -217,10 +212,6 @@ onUnmounted(() => {
       </GlassCard>
     </div>
 
-    <AccountManagerModal
-      v-model="accountOpen"
-      @changed="load"
-    />
 
     <!-- 孩子背包弹窗（家长模式：可查看 + 拿走道具） -->
     <BackpackModal
