@@ -342,6 +342,17 @@ function runMigrations(db: Database.Database): void {
     }
   } catch (e) { /* skip */ }
 
+  // growth_diaries.updated_by（最后编辑人，卡片署名显示「创建者、编辑者」）
+  try {
+    const { c } = db
+      .prepare("SELECT COUNT(*) as c FROM pragma_table_info('growth_diaries') WHERE name='updated_by'")
+      .get() as { c: number };
+    if (c === 0) {
+      db.exec('ALTER TABLE growth_diaries ADD COLUMN updated_by INTEGER');
+      console.log('[migration] Added column: growth_diaries.updated_by');
+    }
+  } catch (e) { /* skip */ }
+
   // 许愿单：商品的许愿开关/天数/连续、许愿专用商品、分类隐藏、兑换来源心愿 id
   // 老库的 products / product_categories / exchange_requests 都是既有表，
   // schema.sql 的 CREATE TABLE IF NOT EXISTS 补不了列，必须在这里逐个加。

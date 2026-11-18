@@ -9,6 +9,8 @@
 export interface DiaryMedia {
   type: 'image' | 'video';
   url: string;
+  /** 上传时的原始文件名（老数据没有）：下载时用它还原文件名 */
+  name?: string | null;
 }
 
 export interface Diary {
@@ -21,6 +23,12 @@ export interface Diary {
   content: string | null;
   media: DiaryMedia[];
   creator_name: string | null;
+  /** 写作者的家长身份（爸爸/妈妈/奶奶…），孩子自己写时为 null */
+  creator_identity?: string | null;
+  /** 最后编辑人的昵称/身份（无人编辑或与创建者同一人时为空） */
+  editor_name?: string | null;
+  editor_identity?: string | null;
+  author_role?: 'parent' | 'child';
   created_at: number;
   updated_at: number | null;
 }

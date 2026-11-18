@@ -12,10 +12,14 @@ export async function request<T = any>(
   options: RequestInit = {}
 ): Promise<T> {
   const auth = useAuthStore();
+  // 只有真的带 body 才声明 Content-Type：DELETE/GET 这类无 body 请求若带
+  // application/json，Fastify 会直接报 "Body cannot be empty when content-type is set to 'application/json'"
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
+  if (options.body !== undefined && options.body !== null) {
+    headers['Content-Type'] = headers['Content-Type'] ?? 'application/json';
+  }
   if (auth.token) {
     headers.Authorization = `Bearer ${auth.token}`;
   }
@@ -34,6 +38,10 @@ export async function request<T = any>(
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    // 开发环境把状态码和后端返回打到控制台，排查时 F12 就能看到
+    if (import.meta.env.DEV) {
+      console.error(`[api] ${options.method || 'GET'} ${path} → ${res.status}`, data);
+    }
     const err = new Error((data as any).message || `请求失败 (${res.status})`) as Error & { status?: number; payload?: any };
     err.status = res.status;
     err.payload = data;
@@ -42,6 +50,22 @@ export async function request<T = any>(
   return data as T;
 }
 
+/** multipart 文件上传（FormData 不能手工设 Content-Type，边界让浏览器自己带） */
+export async function uploadFile(path: string, file: File): Promise<any> {
+  const auth = useAuthStore();
+  const fd = new FormData();
+  fd.append('file', file);
+  const headers: Record<string, string> = {};
+  if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
+  const res = await fetch(`${getBase()}${path}`, { method: 'POST', headers, body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error((data as any).detail || (data as any).error || `上传失败 (${res.status})`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
 export const api = {
   get: <T = any>(p: string) => request<T>(p),
   post: <T = any>(p: string, body?: unknown) =>

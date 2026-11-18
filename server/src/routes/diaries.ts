@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getDb } from '../db/index.js';
 import { pushToUser, pushToParents } from '../ws.js';
+import { deleteUploadIfUnused } from './upload.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 成长日记（家长写，孩子看）
@@ -26,6 +27,8 @@ const mediaSchema = z
     z.object({
       type: z.enum(['image', 'video']),
       url: z.string().regex(MEDIA_URL, '附件路径非法'),
+      /** 上传时的原始文件名（下载时还原；老数据没有这个字段） */
+      name: z.string().max(200).optional().nullable(),
     })
   )
   .max(9, '一篇日记最多 9 个附件');
@@ -36,14 +39,14 @@ const createSchema = z.object({
   user_id: z.number().int().positive().optional(),
   diary_date: dateStr,
   title: z.string().trim().max(60, '标题最多 60 字').nullable().optional(),
-  content: z.string().trim().max(2000, '正文最多 2000 字').nullable().optional(),
+  content: z.string().trim().max(20000, '正文最多 20000 字').nullable().optional(),
   media: mediaSchema.optional(),
 });
 
 const updateSchema = z.object({
   diary_date: dateStr.optional(),
   title: z.string().trim().max(60).nullable().optional(),
-  content: z.string().trim().max(2000).nullable().optional(),
+  content: z.string().trim().max(20000).nullable().optional(),
   media: mediaSchema.optional(),
 });
 
@@ -60,6 +63,11 @@ interface DiaryRow {
   child_name: string | null;
   child_avatar: string | null;
   creator_name: string | null;
+  /** 写作者的家长身份（爸爸/妈妈/奶奶…），孩子自己写时为 null */
+  creator_identity: string | null;
+  /** 最后编辑人的昵称/身份（没人编辑过或与创建者同一人时为空） */
+  editor_name: string | null;
+  editor_identity: string | null;
   /** 'parent' = 家长写的，'child' = 孩子自己写的（created_by 就是孩子本人） */
   author_role: 'parent' | 'child';
 }
@@ -78,6 +86,24 @@ function parseMedia(raw: string | null): Array<{ type: 'image' | 'video'; url: s
   }
 }
 
+/**
+ * 抽出这篇日记引用着的所有上传文件（正文 HTML + media JSON）。
+ * 编辑器里删掉图片/视频后，用「旧引用 − 新引用」找出需要回收的文件。
+ */
+function collectUploadUrls(...sources: Array<string | null | undefined>): Set<string> {
+  const out = new Set<string>();
+  const re = /\/uploads\/[\w./-]+/g;
+  for (const src of sources) {
+    if (!src) continue;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src))) {
+      const url = m[0].replace(/[./]+$/, '');
+      if (!url.includes('..')) out.add(url);
+    }
+  }
+  return out;
+}
+
 function toDiary(r: DiaryRow) {
   return {
     id: r.id,
@@ -89,6 +115,9 @@ function toDiary(r: DiaryRow) {
     content: r.content,
     media: parseMedia(r.media),
     creator_name: r.creator_name,
+    creator_identity: r.creator_identity,
+    editor_name: r.editor_name,
+    editor_identity: r.editor_identity,
     author_role: r.author_role,
     created_at: r.created_at,
     updated_at: r.updated_at,
@@ -101,11 +130,18 @@ function toDiary(r: DiaryRow) {
  * 再加一列 author_role 只会多一个可能与事实不一致的字段。
  */
 const SELECT_BASE = `
-  SELECT d.*, u.name AS child_name, u.avatar AS child_avatar, p.name AS creator_name,
+  SELECT d.*, u.name AS child_name, u.avatar AS child_avatar,
+         COALESCE(NULLIF(p.nickname, ''), p.name) AS creator_name,
+         p.parent_identity AS creator_identity,
+         CASE WHEN d.updated_by IS NOT NULL AND d.updated_by <> d.created_by
+              THEN COALESCE(NULLIF(e.nickname, ''), e.name) END AS editor_name,
+         CASE WHEN d.updated_by IS NOT NULL AND d.updated_by <> d.created_by
+              THEN e.parent_identity END AS editor_identity,
          CASE WHEN d.created_by = d.user_id THEN 'child' ELSE 'parent' END AS author_role
   FROM growth_diaries d
   LEFT JOIN users u ON u.id = d.user_id
   LEFT JOIN users p ON p.id = d.created_by
+  LEFT JOIN users e ON e.id = d.updated_by
 `;
 
 /** LIKE 的通配符要转义，否则家长搜一个 "%" 就会命中全部日记 */
@@ -244,8 +280,8 @@ export function registerDiaryRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'invalid_input', message: parsed.error.issues[0]?.message });
     }
     const db = getDb();
-    const row = db.prepare('SELECT user_id, created_by FROM growth_diaries WHERE id = ?').get(id) as
-      | { user_id: number; created_by: number | null }
+    const row = db.prepare('SELECT user_id, created_by, content, media FROM growth_diaries WHERE id = ?').get(id) as
+      | { user_id: number; created_by: number | null; content: string | null; media: string | null }
       | undefined;
     if (!row) return reply.code(404).send({ error: 'not_found' });
     // 孩子只能动自己写的那几篇：家长写给他看的内容不允许被改（记录的所有权在写的人手里）。
@@ -268,10 +304,22 @@ export function registerDiaryRoutes(app: FastifyInstance) {
     if (!sets.length) return { ok: true };
 
     sets.push('updated_at = unixepoch()');
+    sets.push('updated_by = ?');
+    params.push(req.user.sub);
     params.push(id);
     db.prepare(`UPDATE growth_diaries SET ${sets.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = db.prepare(`${SELECT_BASE} WHERE d.id = ?`).get(id) as DiaryRow;
+    // 被删掉的图片/视频：如果别的日记、商品等都不再引用，就把上传文件一起清掉，
+    // 防止「编辑里删了但文件还在」越积越多（内容去重后同一文件可能被多处共用，所以先查引用）
+    const after = db.prepare('SELECT content, media FROM growth_diaries WHERE id = ?').get(id) as
+      | { content: string | null; media: string | null }
+      | undefined;
+    const oldUrls = collectUploadUrls(row.content, row.media);
+    const newUrls = collectUploadUrls(after?.content, after?.media);
+    for (const url of oldUrls) {
+      if (!newUrls.has(url)) deleteUploadIfUnused(url);
+    }
     notify(row.user_id, 'updated', id);
     return { ok: true, diary: toDiary(updated) };
   });
@@ -281,8 +329,8 @@ export function registerDiaryRoutes(app: FastifyInstance) {
     if (!req.user) return reply.code(401).send({ error: 'unauthorized' });
     const id = Number((req.params as any).id);
     const db = getDb();
-    const row = db.prepare('SELECT user_id, created_by FROM growth_diaries WHERE id = ?').get(id) as
-      | { user_id: number; created_by: number | null }
+    const row = db.prepare('SELECT user_id, created_by, content, media FROM growth_diaries WHERE id = ?').get(id) as
+      | { user_id: number; created_by: number | null; content: string | null; media: string | null }
       | undefined;
     if (!row) return reply.code(404).send({ error: 'not_found' });
     if (req.user.role === 'child' && (req.user.act !== undefined || row.created_by !== req.user.sub || row.user_id !== req.user.sub)) {
@@ -290,8 +338,8 @@ export function registerDiaryRoutes(app: FastifyInstance) {
     }
 
     db.prepare('DELETE FROM growth_diaries WHERE id = ?').run(id);
-    // 附件文件留在 uploads/ 下不删：可能被其它日记/商品共用，
-    // 孤儿文件的代价（一点磁盘）远小于误删别人在用的图。
+    // 这篇日记的附件：别处没引用就删文件（多篇日记共用同一份上传时保留）
+    for (const url of collectUploadUrls(row.content, row.media)) deleteUploadIfUnused(url);
     notify(row.user_id, 'deleted', id);
     return { ok: true };
   });

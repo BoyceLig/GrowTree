@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import { Server } from 'node:http';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -26,7 +27,7 @@ import { registerWishRequestRoutes } from './routes/wish-requests.js';
 import { registerGrowthRoutes } from './routes/growth.js';
 import { registerDiaryRoutes } from './routes/diaries.js';
 import { registerMailboxRoutes } from './routes/mailbox.js';
-import { registerUploadRoutes } from './routes/upload.js';
+import { registerUploadRoutes, sweepOrphanUploads } from './routes/upload.js';
 import { registerUpdateRoutes } from './routes/update.js';
 import { registerAboutRoutes } from './routes/about.js';
 import { registerHealthRoutes } from './routes/health.js';
@@ -84,6 +85,15 @@ async function main() {
   await app.register(cors, {
     // 允许移动端 App（WebView 来源）访问 API；家庭内网工具，反射任意来源以兼容不同 WebView scheme
     origin: true,
+  });
+
+  // 日记媒体走 multipart 流式上传（视频几十上百 MB，base64 会卡死浏览器主线程）
+  await app.register(multipart, {
+    limits: {
+      fileSize: 512 * 1024 * 1024,
+      files: 1,
+      fields: 4,
+    },
   });
 
   await app.register(async (api) => {
@@ -183,6 +193,19 @@ async function main() {
     console.error('Failed to start:', err);
     process.exit(1);
   }
+
+  // 孤儿上传文件清扫：启动后延迟 1 分钟跑一次，之后每天一次。
+  // 覆盖「上传了但没保存进任何数据」的文件（草稿丢弃、编辑中删掉后没保存），
+  // 只删无人引用且超过保留期（3 天）的，不会误伤正在用的图片/视频。
+  const sweep = () => {
+    try {
+      sweepOrphanUploads();
+    } catch (e: any) {
+      console.warn('[uploads] 清扫孤儿文件失败:', e?.message || e);
+    }
+  };
+  setTimeout(sweep, 60_000).unref?.();
+  setInterval(sweep, 24 * 3600 * 1000).unref?.();
 }
 
 main();

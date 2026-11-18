@@ -4,14 +4,18 @@ import { api } from '@/api/client';
 import { useToastStore } from '@/stores/toast';
 import Modal from '@/components/Modal.vue';
 import ZodiacAvatar from '@/components/ZodiacAvatar.vue';
+import DiaryTiptapEditor from '@/components/DiaryTiptapEditor.vue';
 import { todayStr } from '@/utils/growth';
-import type { Diary, DiaryMedia } from '@/utils/diary';
+import type { Diary } from '@/utils/diary';
 
 /**
- * 写 / 改一篇成长日记。
+ * 写 / 改一篇成长日记（Tiptap 富文本版）。
  *
- * 附件走 /upload/media（图片 6MB、视频 20MB），上传成功拿到本站 /uploads/xxx 路径
- * 后只存在 media 数组里，正式落库要等点「保存」—— 这样"传了图又反悔"不会留下半篇日记。
+ * 所有媒体（图片 + 视频）全部内嵌到富文本 HTML 里，通过编辑器工具栏 🖼 / 🎬 按钮插入。
+ * 保存时 media 数组固定传空 []（所有媒体引用都在 content HTML 里了）。
+ * Timeline 渲染时，如果 content 是 HTML（新富文本），就不再渲染独立 media 区，避免重复。
+ *
+ * content 字段存 HTML（Tiptap getHTML 输出），后端 TEXT 列直接存没问题。
  */
 const props = defineProps<{
   modelValue: boolean;
@@ -27,16 +31,11 @@ const emit = defineEmits<{
 
 const toast = useToastStore();
 
-const MAX_IMAGE = 6 * 1024 * 1024;
-const MAX_VIDEO = 20 * 1024 * 1024;
-
 const diaryDate = ref(todayStr());
 const title = ref('');
-const content = ref('');
-const media = ref<DiaryMedia[]>([]);
+const contentHtml = ref('');
+const contentText = ref('');
 const saving = ref(false);
-const uploading = ref(false);
-const fileInput = ref<HTMLInputElement | null>(null);
 
 const today = todayStr();
 const yesterday = computed(() => {
@@ -48,7 +47,6 @@ const yesterday = computed(() => {
 
 const isEdit = computed(() => !!props.diary?.id);
 
-// v-if 挂载 + immediate：组件创建时 modelValue 已经是 true，非 immediate 的 watch 等不到那次跳变
 watch(
   () => props.modelValue,
   (open) => {
@@ -56,8 +54,8 @@ watch(
     const d = props.diary;
     diaryDate.value = d?.diary_date ?? todayStr();
     title.value = d?.title ?? '';
-    content.value = d?.content ?? '';
-    media.value = d ? [...d.media] : [];
+    contentHtml.value = d?.content ?? '';
+    contentText.value = ''; // 由编辑器 onUpdate 重新填充
   },
   { immediate: true }
 );
@@ -66,72 +64,28 @@ const canSave = computed(
   () =>
     !!props.child &&
     !saving.value &&
-    !uploading.value &&
-    !!(title.value.trim() || content.value.trim() || media.value.length)
+    !!(title.value.trim() || contentText.value.trim() || contentHtml.value.trim())
 );
 
-function pickFiles() {
-  fileInput.value?.click();
-}
-
-async function onFiles(e: Event) {
-  const input = e.target as HTMLInputElement;
-  const files = Array.from(input.files ?? []);
-  input.value = ''; // 允许连续选同一批文件
-  if (!files.length) return;
-
-  if (media.value.length + files.length > 9) {
-    return toast.warning('一篇日记最多 9 个附件');
-  }
-
-  uploading.value = true;
-  let failed = 0;
-  for (const f of files) {
-    const isVideo = f.type.startsWith('video/');
-    const isImage = f.type.startsWith('image/');
-    if (!isVideo && !isImage) { failed++; continue; }
-    const limit = isVideo ? MAX_VIDEO : MAX_IMAGE;
-    if (f.size > limit) {
-      toast.warning(`${f.name} 超过 ${isVideo ? 20 : 6}MB，先压缩一下吧`);
-      failed++;
-      continue;
-    }
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error('读取失败'));
-        reader.readAsDataURL(f);
-      });
-      const res = await api.post<{ url: string; type: 'image' | 'video' }>('/upload/media', {
-        data: dataUrl,
-      });
-      media.value.push({ type: res.type, url: res.url });
-    } catch (err: any) {
-      failed++;
-      const code = err.payload?.error;
-      if (code === 'too_large') toast.error(`${f.name} 太大了，压缩后再试`);
-      else if (code === 'unsupported_type') toast.error(`${f.name} 的格式不支持`);
-      else toast.error(err.message || '上传失败');
-    }
-  }
-  uploading.value = false;
-  if (!failed && files.length) toast.success(files.length > 1 ? `已上传 ${files.length} 个附件` : '附件已上传');
-}
-
-function removeMedia(i: number) {
-  media.value.splice(i, 1);
+function onEditorChange(html: string, text: string) {
+  contentHtml.value = html;
+  contentText.value = text;
 }
 
 async function save() {
   if (!props.child || !canSave.value) return;
+  // 视频占位节点还没有 src → 还在上传/截帧，暂不允许保存，避免存下空视频
+  if (/data-src=""/.test(contentHtml.value)) {
+    toast.error('视频还在上传中，请稍候再保存');
+    return;
+  }
   saving.value = true;
   try {
     const body = {
       diary_date: diaryDate.value,
       title: title.value.trim() || null,
-      content: content.value.trim() || null,
-      media: media.value,
+      content: contentHtml.value.trim() || null,
+      media: [] as any, // 新富文本方案：所有媒体内嵌到 HTML，不再走独立数组
     };
     if (isEdit.value) {
       await api.patch(`/growth/diaries/${props.diary!.id}`, body);
@@ -153,7 +107,7 @@ async function save() {
   <Modal
     :model-value="modelValue"
     :title="isEdit ? '编辑成长日记' : '写一篇成长日记'"
-    width="520px"
+    width="680px"
     :close-on-esc="!saving"
     :close-on-mask="!saving"
     @update:model-value="emit('update:modelValue', $event)"
@@ -163,7 +117,7 @@ async function save() {
         <ZodiacAvatar :zodiac="child.avatar" :size="36" />
         <div class="who-text">
           <div class="who-name">{{ child.name }}</div>
-          <div class="who-sub">记下今天发生的小事吧~</div>
+          <div class="who-sub">试试输入 # 标题，1. 列表，> 引用，或直接粘贴图片/视频…</div>
         </div>
       </div>
 
@@ -196,46 +150,12 @@ async function save() {
       </div>
 
       <div class="field">
-        <label class="label" for="diary-content">正文</label>
-        <textarea
-          id="diary-content"
-          v-model="content"
-          class="input textarea"
-          rows="6"
-          maxlength="2000"
-          placeholder="今天发生了什么？写给自己，也写给长大后的孩子看~"
-        ></textarea>
-        <div class="counter">{{ content.length }} / 2000</div>
-      </div>
-
-      <div class="field">
-        <label class="label">照片 / 视频 <span class="opt">（最多 9 个，图片 6MB、视频 20MB）</span></label>
-        <div class="media-grid">
-          <div v-for="(m, i) in media" :key="i" class="m-cell">
-            <img v-if="m.type === 'image'" :src="m.url" alt="" />
-            <video v-else :src="m.url" preload="metadata" muted></video>
-            <button type="button" class="m-del" aria-label="移除附件" @click="removeMedia(i)">✕</button>
-          </div>
-          <button
-            v-if="media.length < 9"
-            type="button"
-            class="m-add"
-            :disabled="uploading"
-            @click="pickFiles"
-          >
-            <span class="m-add-icon">{{ uploading ? '⏳' : '＋' }}</span>
-            <span class="m-add-text">{{ uploading ? '上传中' : '添加' }}</span>
-          </button>
-        </div>
-        <input
-          ref="fileInput"
-          class="hidden-input"
-          type="file"
-          accept="image/*,video/*"
-          multiple
-          @change="onFiles"
+        <label class="label">正文 <span class="opt">（图片 🖼 / 视频 🎬 点工具栏，或直接粘贴）</span></label>
+        <DiaryTiptapEditor
+          v-model="contentHtml"
+          @change="onEditorChange"
         />
-        <p class="tip">支持 JPG / PNG / GIF / WebP 与 MP4 / WebM / MOV 视频</p>
+        <div class="counter">{{ contentText.length }} 字</div>
       </div>
     </div>
 
@@ -279,7 +199,6 @@ async function save() {
   color: var(--text-primary);
 }
 .input:focus { outline: 2px solid var(--accent-yellow); outline-offset: 1px; }
-.textarea { resize: vertical; line-height: 1.7; min-height: 120px; }
 .date { flex: 1; min-width: 0; }
 
 .date-row { display: flex; align-items: center; gap: var(--space-8); }
@@ -294,51 +213,4 @@ async function save() {
 .quick.on { background: rgba(255, 209, 102, 0.45); font-weight: 700; }
 
 .counter { text-align: right; font-size: var(--fs-xs); color: var(--text-muted); }
-
-.media-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
-  gap: var(--space-8);
-}
-.m-cell {
-  position: relative;
-  aspect-ratio: 1;
-  border-radius: var(--r-md);
-  overflow: hidden;
-  background: rgba(90, 58, 74, 0.06);
-}
-.m-cell img, .m-cell video { width: 100%; height: 100%; object-fit: cover; display: block; }
-.m-del {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--r-full);
-  background: rgba(20, 16, 12, 0.62);
-  color: #fff;
-  font-size: var(--fs-xs);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.m-add {
-  aspect-ratio: 1;
-  border-radius: var(--r-md);
-  border: 2px dashed var(--glass-border);
-  background: var(--glass-bg);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  color: var(--text-muted);
-  transition: all var(--dur-fast);
-}
-.m-add:hover:not(:disabled) { border-color: var(--accent-yellow); color: var(--text-on-yellow); }
-.m-add-icon { font-size: var(--fs-lg); line-height: 1; }
-.m-add-text { font-size: var(--fs-xs); }
-
-.hidden-input { display: none; }
-.tip { font-size: var(--fs-xs); color: var(--text-muted); }
 </style>

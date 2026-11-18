@@ -266,6 +266,7 @@ CREATE TABLE IF NOT EXISTS growth_diaries (
   content TEXT,                       -- 正文，可空（允许只发一张照片）
   media TEXT,                         -- 附件 JSON 数组：[{"type":"image"|"video","url":"/uploads/xxx"}]
   created_by INTEGER REFERENCES users(id),
+  updated_by INTEGER REFERENCES users(id),  -- 最后一个编辑人（用于卡片署名「创建者、编辑者」）
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at INTEGER
 );
@@ -461,3 +462,31 @@ CREATE TABLE IF NOT EXISTS special_day_targets (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   PRIMARY KEY (special_day_id, user_id)
 );
+
+-- ============================================================================
+-- 上传文件元数据（2026-11-18）
+--
+-- 磁盘上的文件名是随机生成的唯一 ID（`<时间戳base36>-<随机hex>.<扩展名>`），
+-- 用户上传时看到的原始文件名（可能是中文、可能和别的家庭重名）只存在这张表里。
+-- 下载走 /api/uploads/:name/download，由服务端把 original_name 写进
+-- Content-Disposition，用户拿到的就是自己上传时那个名字。
+--
+-- 同一份内容按哈希去重后，多个业务记录会指向同一个 name（物理文件只有一份），
+-- 因此这里的 original_name 只是「最先上传时的名字」的兜底；
+-- 节点自身（日记 HTML 的 data-name）保留各自的原始名，下载时优先用它。
+-- kind: image / video / file（AI 附件里的文档）
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS upload_files (
+  name TEXT PRIMARY KEY,              -- 磁盘文件名（含扩展名），即 URL /uploads/<name>
+  original_name TEXT NOT NULL,        -- 上传时的原始文件名
+  mime TEXT,
+  size INTEGER,
+  kind TEXT,                          -- image | video | file
+  width INTEGER,                      -- 图片/视频像素宽（可空）
+  height INTEGER,
+  duration REAL,                      -- 视频时长（秒，可空）
+  user_id INTEGER,                    -- 上传者（家长），不做外键：删号后文件仍可能被日记引用
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_upload_files_created ON upload_files(created_at DESC);

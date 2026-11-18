@@ -40,8 +40,20 @@ useDialog({
   canClose: () => props.closeOnEsc,
 });
 
-function onMaskClick() {
-  if (props.closeOnMask) close();
+function onMaskPointerDown(e: PointerEvent) {
+  // 记录按下时是否真的点在遮罩上：浏览器合成 click 时，若 pointerdown 与
+  // pointerup 的目标不同（典型场景：从编辑器里向外拖图片，松手时超出面板），
+  // click 会落在两者的共同祖先（遮罩）上，@click.self 会误判成「点遮罩关闭」。
+  // 只有按下与松开都在遮罩上才允许关闭。
+  maskPointerDownOnMask = e.target === e.currentTarget;
+}
+
+let maskPointerDownOnMask = false;
+
+function onMaskClick(e: MouseEvent) {
+  const onMask = e.target === e.currentTarget;
+  if (props.closeOnMask && onMask && maskPointerDownOnMask) close();
+  maskPointerDownOnMask = false;
 }
 </script>
 
@@ -50,7 +62,7 @@ function onMaskClick() {
        不传送的话嵌套弹窗（如账号管理→编辑账号）会被限制在父弹窗内并被裁切 -->
   <Teleport to="body">
     <Transition name="fade">
-      <div v-if="modelValue" class="modal-mask" @click.self="onMaskClick">
+      <div v-if="modelValue" class="modal-mask" @pointerdown="onMaskPointerDown" @click="onMaskClick">
         <Transition name="slide-up" appear>
           <div
             v-if="modelValue"
