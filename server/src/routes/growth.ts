@@ -56,6 +56,15 @@ function awardPoints(
   db.prepare('UPDATE users SET total_points = total_points + ? WHERE id = ?').run(delta, userId);
 }
 
+/** 有效身高范围；超出范围（含 0）一律当作「没量身高」，避免把缺失值当成基准 */
+function validHeight(value: number | null | undefined): number | null {
+  return value != null && Number.isFinite(value) && value >= 30 && value <= 250 ? value : null;
+}
+
+function validWeight(value: number | null | undefined): number | null {
+  return value != null && Number.isFinite(value) && value >= 2 && value <= 200 ? value : null;
+}
+
 /**
  * 重算某个孩子所有记录的 grow_cm（长高量）。
  *
@@ -75,14 +84,130 @@ function recomputeGrow(userId: number): void {
   const update = db.prepare('UPDATE growth_records SET grow_cm = ? WHERE id = ?');
   let prev: number | null = null;
   for (const r of rows) {
-    if (r.height_cm == null) {
+    const height = validHeight(r.height_cm);
+    if (height == null) {
       // 本次没量身高：不构成新的基准，也不产生增减
       update.run(null, r.id);
       continue;
     }
-    update.run(prev === null ? null : Number((r.height_cm - prev).toFixed(1)), r.id);
-    prev = r.height_cm;
+    update.run(prev === null ? null : Number((height - prev).toFixed(1)), r.id);
+    prev = height;
   }
+}
+
+export type GrowthRecordInput = {
+  userId: number;
+  recordDate: string;
+  heightCm: number | null;
+  weightKg: number | null;
+  note: string | null;
+  createdBy: number;
+};
+
+export type GrowthRecordResult =
+  | { ok: true; recordId: number; updated: boolean; growCm: number; awarded: number }
+  | { ok: false; error: 'not_found' | 'empty_record' };
+
+/**
+ * 录入 / 更新一条成长记录（同一天重复录入按更新处理：按新旧核算结果的差额补发或扣回）。
+ * 路由与 AI 工具共用这一份逻辑，避免两处奖励规则漂移。
+ */
+export function recordGrowthRecord(input: GrowthRecordInput): GrowthRecordResult {
+  const { userId, recordDate, note, createdBy } = input;
+  const heightCm = validHeight(input.heightCm);
+  const weightKg = validWeight(input.weightKg);
+  const db = getDb();
+
+  const child = db
+    .prepare("SELECT id, name FROM users WHERE id = ? AND role = 'child'")
+    .get(userId) as { id: number; name: string } | undefined;
+  if (!child) return { ok: false, error: 'not_found' };
+  if (heightCm == null && weightKg == null) return { ok: false, error: 'empty_record' };
+
+  const existing = db
+    .prepare('SELECT id, awarded, height_cm FROM growth_records WHERE user_id = ? AND record_date = ?')
+    .get(userId, recordDate) as { id: number; awarded: number | null; height_cm: number | null } | undefined;
+
+  // 上一次有效身高：跳过没量身高的记录，一直往前找最近一条有身高的
+  const prev = db
+    .prepare(
+      `SELECT height_cm FROM growth_records
+       WHERE user_id = ? AND record_date < ?
+         AND height_cm IS NOT NULL AND height_cm >= 30 AND height_cm <= 250
+       ORDER BY record_date DESC, id DESC LIMIT 1`
+    )
+    .get(userId, recordDate) as { height_cm: number } | undefined;
+
+  // 本次是「同日覆盖」时，基准要排除被覆盖的那条本身，否则会拿自己跟自己比
+  let baseline: number | null = prev?.height_cm ?? null;
+  if (!prev && validHeight(existing?.height_cm) != null) baseline = null;
+
+  const growCm = heightCm != null && baseline !== null ? heightCm - baseline : 0;
+
+  // 本次核算：记录奖励 + 身高变化 × 每厘米分值（变矮则为负）
+  const recordReward = Math.max(0, getSetting('growth_record_reward', 2));
+  const perCm = getSetting('growth_reward_per_cm', 10);
+  const calcAward = () => recordReward + (growCm !== 0 ? Math.round(growCm * perCm) : 0);
+
+  let recordId: number;
+  let awarded: number;
+
+  if (existing) {
+    // 同日覆盖：只补/扣「新旧核算的差额」，反复改数据刷不出分
+    const newAward = calcAward();
+    awarded = newAward - (existing.awarded ?? 0);
+    db.prepare(
+      `UPDATE growth_records
+       SET height_cm = ?, weight_kg = ?, note = ?, created_by = ?, grow_cm = ?, awarded = ?
+       WHERE id = ?`
+    ).run(
+      heightCm ?? null,
+      weightKg ?? null,
+      note ?? null,
+      createdBy,
+      heightCm != null && baseline !== null ? Number(growCm.toFixed(1)) : null,
+      newAward,
+      existing.id
+    );
+    recordId = existing.id;
+  } else {
+    awarded = calcAward();
+    const res = db
+      .prepare(
+        `INSERT INTO growth_records
+         (user_id, record_date, height_cm, weight_kg, grow_cm, awarded, note, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        userId,
+        recordDate,
+        heightCm ?? null,
+        weightKg ?? null,
+        heightCm != null && baseline !== null ? Number(growCm.toFixed(1)) : null,
+        awarded,
+        note ?? null,
+        createdBy
+      );
+    recordId = Number(res.lastInsertRowid);
+  }
+
+  const parts: string[] = ['测量记录'];
+  if (growCm !== 0) parts.push(growCm > 0 ? `长高 ${growCm.toFixed(1)}cm` : `身高回落 ${Math.abs(growCm).toFixed(1)}cm`);
+  if (awarded !== 0) awardPoints(userId, awarded, parts.join(' · '), createdBy, recordId);
+
+  // 中间插一条会让它后面那些记录的「相对上一条」失准，整段重刷
+  recomputeGrow(userId);
+
+  pushToUser(userId, {
+    type: 'growth_recorded',
+    recordId,
+    recordDate,
+    heightCm: heightCm ?? null,
+    growCm: Number(growCm.toFixed(1)),
+    awarded,
+  });
+
+  return { ok: true, recordId, updated: Boolean(existing), growCm: Number(growCm.toFixed(1)), awarded };
 }
 
 export function registerGrowthRoutes(app: FastifyInstance) {
@@ -121,105 +246,24 @@ export function registerGrowthRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'invalid_input', details: parsed.error.flatten() });
     }
     const { user_id, record_date, height_cm, weight_kg, note } = parsed.data;
-    const db = getDb();
-
-    const child = db
-      .prepare("SELECT id, name FROM users WHERE id = ? AND role = 'child'")
-      .get(user_id) as { id: number; name: string } | undefined;
-    if (!child) return reply.code(404).send({ error: 'not_found' });
-
-    if (height_cm == null && weight_kg == null) {
-      return reply.code(400).send({ error: 'empty_record', message: '身高和体重至少填一项' });
-    }
-
-    const existing = db
-      .prepare('SELECT id, awarded, height_cm FROM growth_records WHERE user_id = ? AND record_date = ?')
-      .get(user_id, record_date) as { id: number; awarded: number | null; height_cm: number | null } | undefined;
-
-    // 上一次有效身高（早于本次日期的最近一条），用于计算长高了多少
-    const prev = db
-      .prepare(
-        `SELECT height_cm FROM growth_records
-         WHERE user_id = ? AND record_date < ? AND height_cm IS NOT NULL
-         ORDER BY record_date DESC LIMIT 1`
-      )
-      .get(user_id, record_date) as { height_cm: number } | undefined;
-
-    // 本次是「同日覆盖」时，基准要排除被覆盖的那条本身，否则会拿自己跟自己比
-    let baseline: number | null = prev?.height_cm ?? null;
-    if (!prev && existing?.height_cm != null) baseline = null;
-
-    const growCm = height_cm != null && baseline !== null ? height_cm - baseline : 0;
-
-    // 本次核算：记录奖励 + 身高变化 × 每厘米分值（变矮则为负）
-    const recordReward = Math.max(0, getSetting('growth_record_reward', 2));
-    const perCm = getSetting('growth_reward_per_cm', 10);
-    const calcAward = () => recordReward + (growCm !== 0 ? Math.round(growCm * perCm) : 0);
-
-    let recordId: number;
-    let awarded: number;
-
-    if (existing) {
-      // 同日覆盖：只补/扣「新旧核算的差额」，反复改数据刷不出分
-      const newAward = calcAward();
-      awarded = newAward - (existing.awarded ?? 0);
-      db.prepare(
-        `UPDATE growth_records
-         SET height_cm = ?, weight_kg = ?, note = ?, created_by = ?, grow_cm = ?, awarded = ?
-         WHERE id = ?`
-      ).run(
-        height_cm ?? null,
-        weight_kg ?? null,
-        note ?? null,
-        req.user!.sub,
-        height_cm != null && baseline !== null ? Number(growCm.toFixed(1)) : null,
-        newAward,
-        existing.id
-      );
-      recordId = existing.id;
-    } else {
-      awarded = calcAward();
-      const res = db
-        .prepare(
-          `INSERT INTO growth_records
-           (user_id, record_date, height_cm, weight_kg, grow_cm, awarded, note, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        .run(
-          user_id,
-          record_date,
-          height_cm ?? null,
-          weight_kg ?? null,
-          height_cm != null && baseline !== null ? Number(growCm.toFixed(1)) : null,
-          awarded,
-          note ?? null,
-          req.user!.sub
-        );
-      recordId = Number(res.lastInsertRowid);
-    }
-
-    const parts: string[] = ['测量记录'];
-    if (growCm !== 0) parts.push(growCm > 0 ? `长高 ${growCm.toFixed(1)}cm` : `身高回落 ${Math.abs(growCm).toFixed(1)}cm`);
-    if (awarded !== 0) awardPoints(user_id, awarded, parts.join(' · '), req.user!.sub, recordId);
-
-    // 中间插一条会让它后面那些记录的「相对上一条」失准，整段重刷
-    recomputeGrow(user_id);
-
-    pushToUser(user_id, {
-      type: 'growth_recorded',
-      recordId,
+    const result = recordGrowthRecord({
+      userId: user_id,
       recordDate: record_date,
       heightCm: height_cm ?? null,
-      growCm: Number(growCm.toFixed(1)),
-      awarded,
+      weightKg: weight_kg ?? null,
+      note: note ?? null,
+      createdBy: req.user!.sub,
     });
-
+    if (!result.ok) {
+      if (result.error === 'not_found') return reply.code(404).send({ error: 'not_found' });
+      return reply.code(400).send({ error: 'empty_record', message: '身高和体重至少填一项' });
+    }
     return {
       ok: true,
-      id: recordId,
-      updated: Boolean(existing),
-      growCm: Number(growCm.toFixed(1)),
-      awarded,
+      id: result.recordId,
+      updated: result.updated,
+      growCm: result.growCm,
+      awarded: result.awarded,
     };
   });
 

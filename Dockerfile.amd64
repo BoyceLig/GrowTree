@@ -63,6 +63,8 @@ COPY --from=builder /app/web/package.json ./web/package.json
 # 复制构建产物
 COPY --from=builder /app/server/dist ./server/dist
 COPY --from=builder /app/web/dist ./web/dist
+# 内置预设技能（随镜像发布，用户不可改；数据卷 skills/ 只放用户技能）
+COPY server/builtin-skills ./server/builtin-skills
 
 # schema.sql 复制到源码目录（db/index.ts 优先从 cwd/server/src/db/schema.sql 加载）
 COPY server/src/db/schema.sql ./server/src/db/schema.sql

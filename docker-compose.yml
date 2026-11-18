@@ -16,6 +16,8 @@ services:
       - "${MANALONG_PORT:-3000}:3000"
     volumes:
       - ./data:/app/data
+      # AI 技能目录：宿主机 ./skills 里每个文件夹一个技能（内含 SKILL.md），改完点设置里的「刷新」即生效
+      - ./skills:/app/data/skills
     environment:
       - ADMIN_USERNAME=admin
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
