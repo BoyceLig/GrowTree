@@ -27,6 +27,7 @@ import { registerWishRequestRoutes } from './routes/wish-requests.js';
 import { registerGrowthRoutes } from './routes/growth.js';
 import { registerDiaryRoutes } from './routes/diaries.js';
 import { registerMailboxRoutes } from './routes/mailbox.js';
+import { registerWhisperRoutes } from './routes/whispers.js';
 import { registerUploadRoutes, sweepOrphanUploads } from './routes/upload.js';
 import { registerUpdateRoutes } from './routes/update.js';
 import { registerAboutRoutes } from './routes/about.js';
@@ -115,6 +116,7 @@ async function main() {
     registerGrowthRoutes(api);
     registerDiaryRoutes(api);
     registerMailboxRoutes(api);
+    registerWhisperRoutes(api);
     registerUploadRoutes(api);
     registerUpdateRoutes(api);
     registerAboutRoutes(api);

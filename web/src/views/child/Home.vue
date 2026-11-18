@@ -8,6 +8,7 @@ import ZodiacAvatar from '@/components/ZodiacAvatar.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Modal from '@/components/Modal.vue';
 import TreeHoleBox from '@/components/TreeHoleBox.vue';
+import WhisperBox from '@/components/WhisperBox.vue';
 import WishListBox from '@/components/WishListBox.vue';
 
 const auth = useAuthStore();
@@ -214,6 +215,9 @@ onUnmounted(() => {
     <!-- 树洞信箱：和爸爸妈妈互相留言。放在首屏第二块 ——
          它是"想说话"的入口，孩子打开首页第一眼就该看得见 -->
     <TreeHoleBox />
+
+    <!-- 悄悄话：每位家长一个独立窗口，孩子可以分别打开私聊 -->
+    <WhisperBox />
 
     <!-- 心愿单：孩子写下想要的礼物和理由，家长审核后上架商城 -->
     <WishListBox />

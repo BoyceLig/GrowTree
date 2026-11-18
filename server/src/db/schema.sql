@@ -296,6 +296,24 @@ CREATE INDEX IF NOT EXISTS idx_mailbox_messages_child ON mailbox_messages(child_
 --    CREATE INDEX 会当场报 "no such column"，整个启动就挂了。
 --    它由 db/index.ts 的 runMigrations 在补完列之后建（那里 ALTER 与索引同一个代码块）。
 
+-- 悄悄话（家长 ↔ 孩子 的一对一私密会话）
+-- 每个 (child_id, parent_id) 是一条独立会话：只有这位家长和这个孩子能看到，
+-- 家里其他家长既看不到列表也读不到消息。
+CREATE TABLE IF NOT EXISTS whisper_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  child_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  parent_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sender_id INTEGER NOT NULL REFERENCES users(id),
+  sender_role TEXT NOT NULL CHECK (sender_role IN ('parent', 'child')),
+  content TEXT NOT NULL,
+  read_by_child INTEGER NOT NULL DEFAULT 0,   -- 孩子是否已读（家长发的悄悄话）
+  read_by_parent INTEGER NOT NULL DEFAULT 0,  -- 这位家长是否已读（孩子发的悄悄话）
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_whisper_messages_thread
+  ON whisper_messages(child_id, parent_id, id DESC);
+
 -- 周期性任务（家长创建，孩子自己领取，家长审核）
 -- 频率：daily=每天；weekly=每周选定星期几（可多天，每「天」为一期）；monthly=每月第 N 天
 CREATE TABLE IF NOT EXISTS recurring_tasks (

@@ -8,6 +8,7 @@ import ZodiacAvatar from '@/components/ZodiacAvatar.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Modal from '@/components/Modal.vue';
 import TreeHoleBox from '@/components/TreeHoleBox.vue';
+import WhisperBox from '@/components/WhisperBox.vue';
 import ReviewCenterBox from '@/components/ReviewCenterBox.vue';
 import BackpackModal from '@/components/BackpackModal.vue';
 
@@ -168,6 +169,9 @@ onUnmounted(() => {
          放在今日统计下面：它是每天都会看一眼的入口，但不如积分排行重要。
          孩子一个都没建时组件自己会给出提示，不会渲染出一个空壳。 -->
     <TreeHoleBox />
+
+    <!-- 悄悄话：只在这位家长和孩子之间可见的一对一私密入口 -->
+    <WhisperBox />
 
     <!-- 审核：心愿单 + 商城兑换 + 任务完成合并处理 -->
     <ReviewCenterBox />

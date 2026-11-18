@@ -262,6 +262,12 @@ export function useWsStore() {
       if (relevant) window.dispatchEvent(new CustomEvent('ws:mailbox_message', { detail: msg }));
     }
 
+    // 悄悄话：服务端只推给会话双方，其他家长不会收到这条事件
+    if (msg.type === 'whisper_message') {
+      if (msg.senderId !== auth.user?.id) toast.info('💌 收到一条悄悄话');
+      window.dispatchEvent(new CustomEvent('ws:whisper_message', { detail: msg }));
+    }
+
     // 心愿单：孩子提交了新心愿 → 所有家长收到提醒，队列实时刷新
     if (msg.type === 'wish_request_created' && auth.user?.role === 'parent') {
       toast.info(`🌠 ${msg.childName || '孩子'} 许下了一个心愿：${msg.title}`);
