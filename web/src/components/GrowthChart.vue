@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import {
   ageInYears,
   heightPercentile,
@@ -88,10 +88,36 @@ const emit = defineEmits<{ (e: 'open-detail'): void }>();
 const uid = Math.random().toString(36).slice(2, 8);
 const clipId = `gc-clip-${uid}`;
 
-const W = 340;
+/**
+ * 画布宽度跟随容器实测宽度，而不是固定 340。
+ *
+ * 原来 W 是一个常量 340，而 SVG 是 `width: 100%; height: auto` —— 在宽卡片上
+ * viewBox 会被等比放大：1024px 的页面里这张图实际被放大到约 2.8 倍，
+ * 高度从 240 变成约 660，坐标轴文字也跟着涨到 20+ px，整块比页面上任何卡片都大。
+ * 把 W 设成「容器的 CSS 宽度」，1 个 viewBox 单位 = 1 个 CSS 像素，
+ * 高度就恒等于 chartHeight，字号/点径/线宽也都回到设计值。
+ *
+ * 首帧（ResizeObserver 还没回调）先用 340 兜底，避免闪一下窄图。
+ */
+const rootEl = ref<HTMLElement | null>(null);
+const boxW = ref(0);
+const W = computed(() => (boxW.value > 0 ? Math.max(260, Math.round(boxW.value)) : 340));
+
+let ro: ResizeObserver | null = null;
+onMounted(() => {
+  if (!rootEl.value) return;
+  ro = new ResizeObserver((entries) => {
+    const w = entries[0]?.contentRect.width ?? 0;
+    if (w > 0) boxW.value = w;
+  });
+  ro.observe(rootEl.value);
+  boxW.value = rootEl.value.clientWidth;
+});
+onUnmounted(() => ro?.disconnect());
+
 const PAD = { l: 34, r: 12, t: 18, b: 22 };
 const H = computed(() => props.chartHeight);
-const plotW = computed(() => W - PAD.l - PAD.r);
+const plotW = computed(() => W.value - PAD.l - PAD.r);
 const plotH = computed(() => H.value - PAD.t - PAD.b);
 
 const unit = computed(() =>
@@ -350,7 +376,7 @@ const bubble = computed(() => {
   const bw = 30;
   const bh = 16;
   let x = d.cx + 9;
-  if (x + bw > W - 2) x = d.cx - bw - 9;
+  if (x + bw > W.value - 2) x = d.cx - bw - 9;
   if (x < 2) x = 2;
   let y = d.cy - bh - 9;
   if (y < 2) y = d.cy + 9;
@@ -407,7 +433,7 @@ const tip = computed(() => {
   const tw = isMulti.value ? 84 : 58;
   const th = 30;
   let x = d.cx + 10;
-  if (x + tw > W - 2) x = d.cx - tw - 10;
+  if (x + tw > W.value - 2) x = d.cx - tw - 10;
   if (x < 2) x = 2;
   let y = d.cy - th - 8;
   if (y < 2) y = d.cy + 10;
@@ -429,6 +455,7 @@ function onTap() {
 
 <template>
   <div
+    ref="rootEl"
     class="growth-chart"
     :class="{ clickable: isButton, multi: isMulti }"
     :role="isButton ? 'button' : undefined"
