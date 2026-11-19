@@ -70,6 +70,12 @@ function openAbout() {
   aboutOpen.value = true;
 }
 
+/** 操作历史：右上角头像菜单入口，只读的审计时间线 */
+function openHistory() {
+  closeMenu();
+  router.push('/parent/history');
+}
+
 /** 「关于」里的检查更新：先关掉弹窗，再把意图广播给 UpdateBanner */
 function checkUpdate() {
   aboutOpen.value = false;
@@ -152,6 +158,10 @@ onUnmounted(() => {
             <button class="menu-item" @click="openAbout">
               <span class="mi-icon">🌳</span>
               <span>关于满伴</span>
+            </button>
+            <button class="menu-item" @click="openHistory">
+              <span class="mi-icon">🕘</span>
+              <span>历史记录</span>
             </button>
             <div class="menu-divider"></div>
             <button class="menu-item danger" @click="logout">

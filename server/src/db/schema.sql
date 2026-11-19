@@ -510,6 +510,32 @@ CREATE TABLE IF NOT EXISTS special_day_targets (
   PRIMARY KEY (special_day_id, user_id)
 );
 
+-- 操作历史（2026-11-16）：全家庭的 append-only 审计日志。
+-- 由 services/audit.ts 的 Fastify onResponse 钩子自动写入：只记成功的写操作
+-- （非 GET 且响应 < 400），谁在几时几分几秒对什么做了什么。
+--
+-- ⚠️ 不可变约定：全项目没有任何修改/删除这张表的代码路径，家长端也只提供查询接口。
+--   谁都不该写 UPDATE/DELETE operation_logs —— 加这条注释就是为了让后人搜到这里时停手。
+--
+-- actor_name 是写入时的姓名快照：孩子/家长账号以后改名甚至被删，历史记录里
+-- 当时是谁仍然是谁（actor_id 为 NULL 即账号已删）。逐条存 path/method 是为了
+-- 描述缺失时兜底还原「当时发生了什么」。
+CREATE TABLE IF NOT EXISTS operation_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  actor_role TEXT,                      -- parent / child / system；NULL = 未登录（理论上不该出现）
+  actor_name TEXT NOT NULL DEFAULT '',  -- 操作人姓名快照（家长取昵称，无则账号名）
+  module TEXT NOT NULL,                 -- 业务模块：积分/任务/商城/审核/日历/成长/日记/信箱/登录…
+  action TEXT NOT NULL,                 -- 动作短语，如「一键加减分」「通过兑换申请」
+  detail TEXT NOT NULL DEFAULT '',      -- 人话描述：对象名、积分变动等（写入时快照，不随对象变化）
+  method TEXT NOT NULL,
+  path TEXT NOT NULL,                   -- 实际请求路径（含参数）
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+-- 时间线按天分组倒序，全部查询都走 created_at 区间
+CREATE INDEX IF NOT EXISTS idx_operation_logs_created ON operation_logs(created_at DESC, id DESC);
+
 -- ============================================================================
 -- AI 助手（2026-11-17）：家长端 AI 对话
 --

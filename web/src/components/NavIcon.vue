@@ -4,7 +4,7 @@
  * 用独立的 <script>（非 setup）导出，是为了让两端 Layout 能把 navItems 里的
  * icon 字段声明成这个联合类型 —— 图标名写错时编译期就报错，而不是渲染成一个空白。
  */
-export type NavIconName = 'home' | 'tasks' | 'points' | 'growth' | 'shop' | 'review' | 'me' | 'calendar' | 'ai';
+export type NavIconName = 'home' | 'tasks' | 'points' | 'growth' | 'shop' | 'review' | 'me' | 'calendar' | 'history' | 'ai';
 </script>
 
 <script setup lang="ts">
@@ -94,6 +94,12 @@ defineProps<{ name: NavIconName }>();
       <path d="M12 3.9c.95 3.9 1.95 4.9 5.85 5.85-3.9.95-4.9 1.95-5.85 5.85-.95-3.9-1.95-4.9-5.85-5.85 3.9-.95 4.9-1.95 5.85-5.85Z" />
       <path d="M18.7 14.7c.4 1.65.85 2.1 2.5 2.5-1.65.4-2.1.85-2.5 2.5-.4-1.65-.85-2.1-2.5-2.5 1.65-.4 2.1-.85 2.5-2.5Z" />
       <path d="M6.2 15.3c.32 1.3.68 1.66 1.98 1.98-1.3.32-1.66.68-1.98 1.98-.32-1.3-.68-1.66-1.98-1.98 1.3-.32 1.66-.68 1.98-1.98Z" />
+    </template>
+    <!-- 历史：时钟盘面 + 逆时针箭头（时间回溯） -->
+    <template v-else-if="name === 'history'">
+      <path d="M3.8 12a8.2 8.2 0 1 0 2.4-5.8" />
+      <path d="M3.6 3.8v3.6h3.6" />
+      <path d="M12 7.8V12l3 1.9" />
     </template>
   </svg>
 </template>

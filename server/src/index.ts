@@ -9,12 +9,14 @@ import { mkdirSync } from 'node:fs';
 import { config, ensureDataDir } from './config.js';
 import { initDb } from './db/index.js';
 import { registerAuthHook } from './middleware.js';
+import { registerAuditHook } from './services/audit.js';
 import { initWs } from './ws.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerParentRoutes } from './routes/parents.js';
 import { registerChildrenRoutes } from './routes/children.js';
 import { registerPointItemsRoutes } from './routes/point-items.js';
 import { registerPointLogsRoutes } from './routes/point-logs.js';
+import { registerOperationLogsRoutes } from './routes/operation-logs.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerAdhocTasksRoutes } from './routes/adhoc-tasks.js';
 import { registerRecurringTasksRoutes } from './routes/recurring-tasks.js';
@@ -82,6 +84,8 @@ async function main() {
   const httpServer = app.server as unknown as Server;
 
   registerAuthHook(app);
+  // 操作历史审计钩子：拦所有成功的写操作落 operation_logs（append-only，见 services/audit.ts）
+  registerAuditHook(app);
   // 必须在任何路由注册之前：它靠 onRoute 包裹每个 handler
   ext?.hooks?.(app);
 
@@ -106,6 +110,7 @@ async function main() {
     registerChildrenRoutes(api);
     registerPointItemsRoutes(api);
     registerPointLogsRoutes(api);
+    registerOperationLogsRoutes(api);
     registerDashboardRoutes(api);
     registerAdhocTasksRoutes(api);
     registerRecurringTasksRoutes(api);
