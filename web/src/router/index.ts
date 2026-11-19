@@ -22,6 +22,7 @@ const router = createRouter({
         { path: 'growth', name: 'parent-growth', component: () => import('@/views/parent/Growth.vue') },
         { path: 'calendar', name: 'parent-calendar', component: () => import('@/views/parent/Calendar.vue') },
         { path: 'logs', name: 'parent-logs', component: () => import('@/views/parent/Logs.vue') },
+        { path: 'ai', name: 'parent-ai', component: () => import('@/views/parent/AiChat.vue') },
       ],
     },
     // 小孩端

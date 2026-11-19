@@ -149,6 +149,21 @@ function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
+/** 删除一篇成长日记：删行 + 清理不再被引用的附件 + 通知。路由与 AI 工具共用。 */
+export function deleteDiaryRecord(id: number): boolean {
+  const db = getDb();
+  const row = db.prepare('SELECT user_id, content, media FROM growth_diaries WHERE id = ?').get(id) as
+    | { user_id: number; content: string | null; media: string | null }
+    | undefined;
+  if (!row) return false;
+
+  db.prepare('DELETE FROM growth_diaries WHERE id = ?').run(id);
+  // 这篇日记的附件：别处没引用就删文件（多篇日记共用同一份上传时保留）
+  for (const url of collectUploadUrls(row.content, row.media)) deleteUploadIfUnused(url);
+  notify(row.user_id, 'deleted', id);
+  return true;
+}
+
 export function registerDiaryRoutes(app: FastifyInstance) {
   // 列表 / 筛选（家长看任意孩子，孩子只看自己）
   app.get('/growth/diaries', async (req, reply) => {
@@ -329,18 +344,15 @@ export function registerDiaryRoutes(app: FastifyInstance) {
     if (!req.user) return reply.code(401).send({ error: 'unauthorized' });
     const id = Number((req.params as any).id);
     const db = getDb();
-    const row = db.prepare('SELECT user_id, created_by, content, media FROM growth_diaries WHERE id = ?').get(id) as
-      | { user_id: number; created_by: number | null; content: string | null; media: string | null }
+    const row = db.prepare('SELECT user_id, created_by FROM growth_diaries WHERE id = ?').get(id) as
+      | { user_id: number; created_by: number | null }
       | undefined;
     if (!row) return reply.code(404).send({ error: 'not_found' });
     if (req.user.role === 'child' && (req.user.act !== undefined || row.created_by !== req.user.sub || row.user_id !== req.user.sub)) {
       return reply.code(403).send({ error: 'forbidden', message: '只能删除自己写的日记' });
     }
 
-    db.prepare('DELETE FROM growth_diaries WHERE id = ?').run(id);
-    // 这篇日记的附件：别处没引用就删文件（多篇日记共用同一份上传时保留）
-    for (const url of collectUploadUrls(row.content, row.media)) deleteUploadIfUnused(url);
-    notify(row.user_id, 'deleted', id);
+    deleteDiaryRecord(id);
     return { ok: true };
   });
 }

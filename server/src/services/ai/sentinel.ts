@@ -15,13 +15,13 @@ import { appendAuditRow } from '../audit.js';
  *      （module=AI，action 带「被执行的模块名」）。
  */
 
-export type SafetyPolicy = 'alwaysAsk' | 'onDemand' | 'allowAll';
+export type SafetyPolicy = 'alwaysAsk' | 'allowAll';
 
-/** 动作风险分级：normal=常规写（积分/任务，有审计可纠） high=高风险（外部 MCP、写技能文件） */
+/** 动作风险分级：保留字段用于审计/展示；安全策略只有「全部询问 / 全部允许」两档 */
 export type ActionRisk = 'normal' | 'high';
 
 const KEY = 'ai_safety';
-const DEFAULT_POLICY: SafetyPolicy = 'onDemand';
+const DEFAULT_POLICY: SafetyPolicy = 'alwaysAsk';
 
 function readPolicy(): unknown {
   try {
@@ -34,10 +34,10 @@ function readPolicy(): unknown {
 
 export function getSafetyPolicy(): SafetyPolicy {
   const v = readPolicy();
-  // 老值迁移：ask→始终询问 / deny→始终询问（拒绝档已并入）/ allow→全部允许
-  if (v === 'ask' || v === 'deny') return 'alwaysAsk';
+  // 老值迁移：ask / deny / onDemand 一律并入「全部询问」
+  if (v === 'ask' || v === 'deny' || v === 'onDemand') return 'alwaysAsk';
   if (v === 'allow') return 'allowAll';
-  return v === 'alwaysAsk' || v === 'onDemand' || v === 'allowAll' ? v : DEFAULT_POLICY;
+  return v === 'alwaysAsk' || v === 'allowAll' ? v : DEFAULT_POLICY;
 }
 
 export function setSafetyPolicy(mode: SafetyPolicy): void {
@@ -50,7 +50,7 @@ export function setSafetyPolicy(mode: SafetyPolicy): void {
 }
 
 export function isSafetyPolicy(v: unknown): v is SafetyPolicy {
-  return v === 'alwaysAsk' || v === 'onDemand' || v === 'allowAll';
+  return v === 'alwaysAsk' || v === 'allowAll';
 }
 
 /* ── 待确认动作：三选确认的登记簿 ──────────────────────────────────────── */
@@ -135,10 +135,9 @@ export type SentinelVerdict =
   | { verdict: 'deny'; reason: string };
 
 /**
- * 评估一个「写类/不可逆」动作：
- *   - 策略=拒绝：直接拒绝，模型只能转告家长手动操作；
- *   - 策略=允许：放行（但仍写审计）；
- *   - 策略=询问（默认）：已有任务级放行 → 放行；否则生成三选确认单。
+ * 评估一个「写类/不可逆」动作（读工具与只读技能不会走到这里）：
+ *   - 全部允许：放行（但仍写审计）；
+ *   - 全部询问（默认）：已有任务级放行 → 放行；否则生成确认单。
  */
 export function judge(opts: {
   taskId: string;
@@ -155,7 +154,7 @@ export function judge(opts: {
   const policy = getSafetyPolicy();
   const { taskId, ownerUserId, actionKey, kind, payload, summary, moduleName, actor } = opts;
 
-    if (policy === 'alwaysAsk' && !isTaskAllowed(taskId, actionKey)) {
+  if (policy === 'alwaysAsk' && !isTaskAllowed(taskId, actionKey)) {
     const token = makeToken();
     pending.set(token, {
       token,
@@ -168,28 +167,12 @@ export function judge(opts: {
       moduleName,
       createdAt: Date.now(),
     });
-    audit(actor, '请求确认（始终询问）', summary, moduleName);
+    audit(actor, '请求确认（全部询问）', summary, moduleName);
     return { verdict: 'ask', token, summary, detail: summary };
   }
 
-  if (policy === 'onDemand' && (opts.risk ?? 'normal') === 'high' && !isTaskAllowed(taskId, actionKey)) {
-    const token = makeToken();
-    pending.set(token, {
-      token,
-      ownerUserId,
-      taskId,
-      actionKey,
-      kind,
-      payload,
-      summary,
-      moduleName,
-      createdAt: Date.now(),
-    });
-    audit(actor, '请求确认（高风险）', summary, moduleName);
-    return { verdict: 'ask', token, summary, detail: summary };
-  }
 
-  audit(actor, isTaskAllowed(taskId, actionKey) ? '任务内放行' : policy === 'allowAll' ? '策略放行（全部允许）' : '按需放行', summary, moduleName);
+  audit(actor, isTaskAllowed(taskId, actionKey) ? '任务内放行' : '策略放行（全部允许）', summary, moduleName);
   return { verdict: 'allow' };
 }
 
@@ -197,6 +180,14 @@ export function getPending(token: string, userId: number): PendingAction | undef
   sweepSentinel();
   const action = pending.get(token);
   return action && action.ownerUserId === userId ? action : undefined;
+}
+
+/** 列出某个家长名下还没处理的确认单（页面刷新/切页后补弹） */
+export function listPendingForOwner(userId: number): PendingAction[] {
+  sweepSentinel();
+  return [...pending.values()]
+    .filter((a) => a.ownerUserId === userId)
+    .sort((a, b) => a.createdAt - b.createdAt);
 }
 
 /** 家长对确认单作出决定。'task' 放行后同类动作本回合内不再询问。 */

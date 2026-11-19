@@ -259,6 +259,47 @@ const updateSchema = upsertSchema.partial();
 
 // ── 路由 ────────────────────────────────────────────────────────────────────
 
+/** 删除周期任务（连同领取记录级联删除）。路由与 AI 工具共用。 */
+export function deleteRecurringTask(id: number): boolean {
+  const db = getDb();
+  const task = db.prepare('SELECT id FROM recurring_tasks WHERE id = ?').get(id);
+  if (!task) return false;
+  // 删之前先记下受影响的孩子（任务没了，孩子端对应标签要立刻消失）
+  const affected = db.prepare('SELECT DISTINCT user_id FROM recurring_claims WHERE task_id = ?').all(id) as any[];
+  db.prepare('DELETE FROM recurring_tasks WHERE id = ?').run(id);
+  for (const row of affected) {
+    pushToUser(row.user_id, { type: 'recurring_claims_cleared', taskId: id });
+  }
+  pushToAll({ type: 'recurring_tasks_changed', action: 'deleted' });
+  return true;
+}
+
+/** 清空某周期任务的全部领取/完成记录（任务保留）。返回任务名，任务不存在返回 null。 */
+export function clearRecurringTaskClaims(id: number): string | null {
+  const db = getDb();
+  const task = db.prepare('SELECT id, name FROM recurring_tasks WHERE id = ?').get(id) as any;
+  if (!task) return null;
+  // 记录受影响的孩子，删完后逐个推送刷新
+  const affected = db.prepare('SELECT DISTINCT user_id FROM recurring_claims WHERE task_id = ?').all(id) as any[];
+  db.prepare('DELETE FROM recurring_claims WHERE task_id = ?').run(id);
+  for (const row of affected) {
+    pushToUser(row.user_id, { type: 'recurring_claims_cleared', taskId: id, taskName: task.name });
+  }
+  pushToParents({ type: 'recurring_claims_cleared', taskId: id, taskName: task.name });
+  return task.name;
+}
+
+/** 删除单条领取/完成记录。返回该记录，记录不存在返回 null。 */
+export function deleteRecurringClaim(claimId: number): { task_id: number; user_id: number } | null {
+  const db = getDb();
+  const claim = db.prepare('SELECT id, task_id, user_id, period_key FROM recurring_claims WHERE id = ?').get(claimId) as any;
+  if (!claim) return null;
+  db.prepare('DELETE FROM recurring_claims WHERE id = ?').run(claimId);
+  pushToUser(claim.user_id, { type: 'recurring_claims_cleared', taskId: claim.task_id });
+  pushToParents({ type: 'recurring_claims_cleared', taskId: claim.task_id });
+  return { task_id: claim.task_id, user_id: claim.user_id };
+}
+
 export function registerRecurringTasksRoutes(app: FastifyInstance) {
   // 家长：创建周期任务
   app.post('/recurring-tasks', { preHandler: requireParent }, async (req, reply) => {
@@ -457,45 +498,26 @@ export function registerRecurringTasksRoutes(app: FastifyInstance) {
   });
 
   // 家长：删除周期任务（连同领取记录级联删除）
-  app.delete('/recurring-tasks/:id', { preHandler: requireParent }, async (req) => {
-    const id = Number((req.params as any).id);
-    const db = getDb();
-    // 删之前先记下受影响的孩子（任务没了，孩子端对应标签要立刻消失）
-    const affected = db.prepare('SELECT DISTINCT user_id FROM recurring_claims WHERE task_id = ?').all(id) as any[];
-    db.prepare('DELETE FROM recurring_tasks WHERE id = ?').run(id);
-    for (const row of affected) {
-      pushToUser(row.user_id, { type: 'recurring_claims_cleared', taskId: id });
+  app.delete('/recurring-tasks/:id', { preHandler: requireParent }, async (req, reply) => {
+    if (!deleteRecurringTask(Number((req.params as any).id))) {
+      return reply.code(404).send({ error: 'not_found' });
     }
-    pushToAll({ type: 'recurring_tasks_changed', action: 'deleted' });
     return { ok: true };
   });
 
   // 家长：只删除某周期任务的领取/完成记录（任务本身保留，孩子端可重新领取）
   app.delete('/recurring-tasks/:id/claims', { preHandler: requireParent }, async (req, reply) => {
-    const id = Number((req.params as any).id);
-    const db = getDb();
-    const task = db.prepare('SELECT id, name FROM recurring_tasks WHERE id = ?').get(id) as any;
-    if (!task) return reply.code(404).send({ error: 'not_found' });
-
-    // 记录受影响的孩子，删完后逐个推送刷新
-    const affected = db.prepare('SELECT DISTINCT user_id FROM recurring_claims WHERE task_id = ?').all(id) as any[];
-    db.prepare('DELETE FROM recurring_claims WHERE task_id = ?').run(id);
-    for (const row of affected) {
-      pushToUser(row.user_id, { type: 'recurring_claims_cleared', taskId: id, taskName: task.name });
+    if (clearRecurringTaskClaims(Number((req.params as any).id)) === null) {
+      return reply.code(404).send({ error: 'not_found' });
     }
-    pushToParents({ type: 'recurring_claims_cleared', taskId: id, taskName: task.name });
     return { ok: true };
   });
 
   // 家长：删除单条领取/完成记录（已完成标签下按孩子单独删除用）
   app.delete('/recurring-tasks/claims/:id', { preHandler: requireParent }, async (req, reply) => {
-    const id = Number((req.params as any).id);
-    const db = getDb();
-    const claim = db.prepare('SELECT id, task_id, user_id, period_key FROM recurring_claims WHERE id = ?').get(id) as any;
-    if (!claim) return reply.code(404).send({ error: 'not_found' });
-    db.prepare('DELETE FROM recurring_claims WHERE id = ?').run(id);
-    pushToUser(claim.user_id, { type: 'recurring_claims_cleared', taskId: claim.task_id });
-    pushToParents({ type: 'recurring_claims_cleared', taskId: claim.task_id });
+    if (!deleteRecurringClaim(Number((req.params as any).id))) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
     return { ok: true };
   });
 

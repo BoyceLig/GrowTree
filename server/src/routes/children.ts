@@ -38,6 +38,39 @@ const updateChildSchema = z.object({
   hidden: z.boolean().optional(),
 });
 
+/** 删除孩子账号并级联清理全部关联数据（事务）。路由与 AI 工具共用。 */
+export function deleteChildAccount(id: number): boolean {
+  const db = getDb();
+  const current = db.prepare('SELECT id FROM users WHERE id = ? AND role = ?').get(id, 'child');
+  if (!current) return false;
+
+  // 显式按依赖顺序删除，兼容旧库中 ALTER 添加、无 FK 约束的字段
+  const cleanup = db.transaction((childId: number) => {
+    // 任务完成申请（该小孩提交的，以及属于该小孩任务的）
+    db.prepare(`
+      DELETE FROM task_completions
+      WHERE user_id = ? OR task_id IN (SELECT id FROM adhoc_tasks WHERE user_id = ?)
+    `).run(childId, childId);
+    // 临时任务
+    db.prepare('DELETE FROM adhoc_tasks WHERE user_id = ?').run(childId);
+    // 兑换申请
+    db.prepare('DELETE FROM exchange_requests WHERE user_id = ?').run(childId);
+    // 积分流水
+    db.prepare('DELETE FROM point_logs WHERE user_id = ?').run(childId);
+    // 日常完成记录
+    db.prepare('DELETE FROM daily_completions WHERE user_id = ?').run(childId);
+    // 该小孩的专属积分项
+    db.prepare('DELETE FROM point_items WHERE owner_id = ?').run(childId);
+    // 成长记录（身高体重）
+    db.prepare('DELETE FROM growth_records WHERE user_id = ?').run(childId);
+    // 账号本体
+    db.prepare("DELETE FROM users WHERE id = ? AND role = 'child'").run(childId);
+  });
+
+  cleanup(id);
+  return true;
+}
+
 export function registerChildrenRoutes(app: FastifyInstance) {
   // 列出所有小孩（家长）
   //
@@ -142,36 +175,9 @@ export function registerChildrenRoutes(app: FastifyInstance) {
 
   // 删除小孩（事务级联清理所有关联数据）
   app.delete('/children/:id', { preHandler: requireParent }, async (req, reply) => {
-    const id = Number((req.params as any).id);
-    const db = getDb();
-
-    const current = db.prepare('SELECT id FROM users WHERE id = ? AND role = ?').get(id, 'child');
-    if (!current) return reply.code(404).send({ error: 'not_found' });
-
-    // 显式按依赖顺序删除，兼容旧库中 ALTER 添加、无 FK 约束的字段
-    const cleanup = db.transaction((childId: number) => {
-      // 任务完成申请（该小孩提交的，以及属于该小孩任务的）
-      db.prepare(`
-        DELETE FROM task_completions
-        WHERE user_id = ? OR task_id IN (SELECT id FROM adhoc_tasks WHERE user_id = ?)
-      `).run(childId, childId);
-      // 临时任务
-      db.prepare('DELETE FROM adhoc_tasks WHERE user_id = ?').run(childId);
-      // 兑换申请
-      db.prepare('DELETE FROM exchange_requests WHERE user_id = ?').run(childId);
-      // 积分流水
-      db.prepare('DELETE FROM point_logs WHERE user_id = ?').run(childId);
-      // 日常完成记录
-      db.prepare('DELETE FROM daily_completions WHERE user_id = ?').run(childId);
-      // 该小孩的专属积分项
-      db.prepare('DELETE FROM point_items WHERE owner_id = ?').run(childId);
-      // 成长记录（身高体重）
-      db.prepare('DELETE FROM growth_records WHERE user_id = ?').run(childId);
-      // 账号本体
-      db.prepare("DELETE FROM users WHERE id = ? AND role = 'child'").run(childId);
-    });
-
-    cleanup(id);
+    if (!deleteChildAccount(Number((req.params as any).id))) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
     return { ok: true };
   });
 }

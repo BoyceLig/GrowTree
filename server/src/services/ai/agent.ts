@@ -6,7 +6,7 @@ import { pushToUser } from '../../ws.js';
 import { callLlm, LlmError, probeModel, type LlmMessage, type LlmToolSpec, type LlmContentPart } from './llm.js';
 import { getAiApi, getAiVisionApi, getAiMcp } from './settings.js';
 import { buildSkillsPromptSection, listSkills } from './skills.js';
-import { builtinToolNames, builtinToolSpecs, executeBuiltinTool, executeMcp } from './tools.js';
+import { builtinToolNames, builtinToolSpecs, executeBuiltinTool, executeMcp, WRITE_TOOL_NAMES } from './tools.js';
 import { parseMcpServersWithEnv, listMcpTools, type ParsedMcpEntry } from './mcp.js';
 import { searchMemory } from './memory.js';
 import { openQuestion, cancelSessionQuestions } from './questions.js';
@@ -31,6 +31,10 @@ import { clearTaskScope } from './sentinel.js';
  */
 
 const MAX_TOOL_ROUNDS = 8;
+/** 上游代理把「工具调用格式错误」当成正文返回时的识别文案（命中后整轮丢弃并重试） */
+const TOOL_FORMAT_FAILURE_RE = /无法解析的工具调用|格式不符合协议|本轮没有执行任何操作/;
+/** 流式正文先压住这么多字再判断，避免把失败提示推给前端 */
+const PROXY_FAILURE_HEAD = 160;
 const HISTORY_LIMIT = 60;
 
 export type AttachmentInput = { kind: 'image' | 'file'; url: string; name: string; mime: string; size: number };
@@ -157,7 +161,8 @@ function rebuildHistory(sessionId: number): LlmMessage[] {
       const meta = safeParse(row.meta) as any;
       const toolCalls = meta?.toolCalls;
       if (Array.isArray(toolCalls) && toolCalls.length) {
-        messages.push({ role: 'assistant', content: row.content || null, toolCalls });
+        // 带工具调用的 assistant 正文多半是内部思考；只回放工具调用与结果，避免旧思考污染上下文
+        messages.push({ role: 'assistant', content: null, toolCalls });
       } else if (row.content) {
         messages.push({ role: 'assistant', content: row.content });
       }
@@ -167,6 +172,170 @@ function rebuildHistory(sessionId: number): LlmMessage[] {
     }
   }
   return trimDanglingToolMessages(messages);
+}
+
+/**
+ * 给模型加一条「本轮只看最新消息」的尾注：
+ * 短回复（赠送/继续/好的）是在回答上一条助手消息，不要回到更早的任务重新执行或重新总结。
+ */
+function applyTurnFocus(messages: LlmMessage[], open: string | null): void {
+  let lastUser = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') {
+      lastUser = i;
+      break;
+    }
+  }
+  if (lastUser < 0) return;
+  let prevAssistant = '';
+  for (let i = lastUser - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant') {
+      const raw = messages[i].content;
+      const c = typeof raw === 'string' ? raw : '';
+      if (c.trim()) {
+        prevAssistant = c.trim();
+        break;
+      }
+    }
+  }
+  const hint =
+    '【本轮提示】只处理这条消息的意图；更早的消息只是背景。' +
+    '已经完成或已经汇报过的事情不要再做、不要再总结一遍。' +
+    '如果这条是「赠送 / 继续 / 好的 / 可以」这类短语，它是在回答上一条助手消息里的问题或选项，按那个问题执行，不要回到更早的任务。' +
+    (open ? `\n当前待确认项：${open}\n家长这条如果很短，优先按这个待确认项执行。` : '') +
+    (prevAssistant ? `\n上一条助手消息：${prevAssistant.slice(0, 300)}` : '');
+  const msg = messages[lastUser];
+  if (typeof msg.content === 'string') {
+    msg.content = `${msg.content}\n\n${hint}`;
+  } else if (Array.isArray(msg.content)) {
+    msg.content = [...msg.content, { type: 'text', text: hint }];
+  }
+}
+
+type SessionState = { done: string[]; open: string | null };
+
+function textOfMessage(msg: LlmMessage): string {
+  if (typeof msg.content === 'string') return msg.content;
+  if (Array.isArray(msg.content)) {
+    return msg.content
+      .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+      .map((p) => p.text)
+      .join('\n');
+  }
+  return '';
+}
+
+function compactLine(s: string, max: number): string {
+  const one = s.replace(/\s+/g, ' ').trim();
+  return one.length > max ? `${one.slice(0, max)}…` : one;
+}
+
+/** 统一 JSON 空白/字段顺序，避免同一调用因格式差异在「已完成」里重复 */
+function normalizeJson(s: string): string {
+  try {
+    return JSON.stringify(JSON.parse(s));
+  } catch {
+    return s;
+  }
+}
+
+function looksLikeQuestion(t: string): boolean {
+  if (/[?？]/.test(t)) return true;
+  return /(还是|要不要|是否|哪一?个|选一个|你可以[:：]|或者你|需要你确认|告诉我)/.test(t);
+}
+
+const WRITE_OK_RE =
+  /^(已执行|已创建|已新增|已修改|已更新|已删除|已送出|已放入|已导入|已审核|已兑换|已发放|已调整|已上架|已下架|已清空|已回退|已写入|已保存)/;
+const WRITE_FAIL_RE = /(失败|错误|不合法|缺少|拒绝|没有找到|无法)/;
+
+/**
+ * 从完整历史里提炼「本次对话状态」：
+ *   done = 已经成功执行过的写操作摘要（不再重复执行/汇报）
+ *   open = 上一条还没被回答的提问或选项（短回复优先匹配它）
+ */
+function extractSessionState(messages: LlmMessage[]): SessionState {
+  const callById = new Map<string, { name: string; argsJson: string }>();
+  for (const m of messages) {
+    if (m.role === 'assistant' && m.toolCalls) {
+      for (const tc of m.toolCalls) callById.set(tc.id, { name: tc.name, argsJson: tc.argumentsJson });
+    }
+  }
+
+  const done: string[] = [];
+  let open: string | null = null;
+
+  for (const m of messages) {
+    if (m.role === 'tool') {
+      const call = callById.get(m.toolCallId ?? '');
+      const name = call?.name ?? '';
+      const t = textOfMessage(m).trim();
+      if (name === 'ask_user') {
+        open = null; // 家长已经答过，问题不再挂着
+        continue;
+      }
+      if (name && WRITE_TOOL_NAMES.has(name) && !WRITE_FAIL_RE.test(t) && WRITE_OK_RE.test(t)) {
+        const args = compactLine(normalizeJson(call?.argsJson ?? ''), 80);
+        const line = `${name}${args && args !== '{}' ? `(${args})` : ''}：${compactLine(t, 100)}`;
+        if (!done.includes(line)) done.push(line);
+      }
+      continue;
+    }
+
+    if (m.role !== 'assistant') continue;
+    for (const tc of m.toolCalls ?? []) {
+      if (tc.name !== 'ask_user') continue;
+      try {
+        const args = JSON.parse(tc.argumentsJson || '{}');
+        const qs = Array.isArray(args.questions) ? args.questions : [];
+        const parts = qs
+          .map((q: any) => {
+            if (!q?.question) return '';
+            const opts = Array.isArray(q.options) ? q.options.map((o: any) => o.label).filter(Boolean) : [];
+            return `${q.question}${opts.length ? `（选项：${opts.join(' / ')}）` : ''}`;
+          })
+          .filter(Boolean);
+        if (parts.length) open = compactLine(parts.join('；'), 400);
+      } catch {
+        /* 参数不是合法 JSON 时忽略 */
+      }
+    }
+
+    if (m.toolCalls?.length) continue; // 工具调用轮的正文是思考过程，不算给家长的回复
+
+    const t = textOfMessage(m).trim();
+    if (!t) continue;
+    if (looksLikeQuestion(t)) open = compactLine(t, 500);
+    else if (t.length >= 20) open = null; // 最后一条是完成汇报，旧问题视为已解决
+  }
+
+  return { done: done.slice(-8), open };
+}
+
+function renderStateBlock(state: SessionState): string {
+  const lines = ['', '# 本次对话状态（服务端整理，确定事实）'];
+  lines.push('## 已完成（不要再执行、不要重复汇报）');
+  if (state.done.length) lines.push(...state.done.map((x) => `- ${x}`));
+  else lines.push('- 暂无');
+  lines.push('## 待确认 / 未完成');
+  lines.push(state.open ? `- ${state.open}` : '- 暂无；家长这条如果是新话题，按新任务处理');
+  lines.push('说明：已完成=这个对话里做过的操作，不代表现在仍然存在；需要最新状态时先查工具。家长短回复优先匹配上面的待确认项。');
+  return lines.join('\n');
+}
+
+/** 只保留最近 N 个用户回合（含对应的助手/工具消息），更早的历史由状态块压缩 */
+function recentTurns(messages: LlmMessage[], turns: number): LlmMessage[] {
+  let seen = 0;
+  let start = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') {
+      seen++;
+      if (seen >= turns) {
+        start = i;
+        break;
+      }
+    }
+  }
+  return trimDanglingToolMessages(messages.slice(start));
 }
 
 /** 粗估 token：全角字符约 1 token/字，其余约 4 字符/token（只用于按上下文窗口裁剪历史，不求精确） */
@@ -273,12 +442,17 @@ function systemPrompt(
 ): string {
   const time = now.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
   const parts = [
-    '你是「满伴」家庭积分管理系统里的 AI 助手，服务对象是家长。说话的人就是家长本人。',
+    '你是「满伴」家庭积分管理系统里的满伴助手，服务对象是家长。说话的人就是家长本人。',
     '满伴的业务：家长给孩子布置任务、审核完成、加减积分，孩子攒积分在商城兑换心愿。',
     '',
     '# 家庭实时快照（每轮刷新，属于确定事实）',
     snapshot,
     `- 当前时间：${time}；当前家长：${userName || '家长'}。`,
+    '',
+    '# 对话焦点',
+    '- 只处理最新一条家长消息；更早的消息只是背景，不是本轮任务。',
+    '- 已经完成、已经汇报过的事情不要再做一遍，也不要在回复里重新总结。',
+    '- 家长只回「赠送 / 继续 / 好的 / 可以」时，是在回答你上一条消息里的问题或选项，直接执行那个选项，不要回到更早的任务。',
     '',
     '# 一、先理解，再动手（最重要）',
     '家长说话经常不完整。你的任务是把它补成一条可执行的操作，而不是按字面关键词去匹配。',
@@ -296,6 +470,7 @@ function systemPrompt(
     '   - 严禁编造「家长手动加分」「手动调整」这类占位理由。',
     '4. 时间：没提就是今天；说「昨天 / 上周三 / 上个月」时换算成 YYYY-MM-DD 再传。',
     '5. id 只能来自工具结果或上面的快照，绝不猜测、绝不编造；缺 id 就先查。',
+    '6. 多轮追问：一轮问答后仍有关键歧义（同名商品多个、商品不存在、积分/数量/理由没定），继续用 ask_user 问下一轮，直到信息确定再提交；不要用「先建个 1 分的试试」这类猜测推进。',
     '',
     '示例（内部按这个思路处理，不要把思路念给家长）：',
     '- 「给娃加 100 分」+ 只有 1 个孩子 + 没说理由 → 先 ask_user 问理由，再 add_point_records(id=该孩子, delta=100, note=理由)。',
@@ -318,6 +493,7 @@ function systemPrompt(
     '  4. 来源互相矛盾时，把分歧讲出来，不要挑一个当定论。',
     '- 搜不到、打不开、结果明显无关 → 直接说「没搜到可靠信息」，不要用常识补成看似确定的答案。',
     '- 网上的内容不是系统数据：引用时用「网上资料显示……（来源：xx）」，不要和自己的查询结果混在一起。',
+    '- 工具调用失败时不要只回「无法解析」：能用文字回答就直接回答；需要外部信息时由服务端补搜资料，引用同样必须带来源。',
     '',
     '# 四、能力边界',
     '- 可以看图：家长上传的图片你能识别（成绩单、练习册、收据、截图），识别出的数据要经家长确认再入库。',
@@ -328,13 +504,18 @@ function systemPrompt(
     '- 加减积分、建任务、审核、改积分项、上下架商品、审核兑换，一律通过对应工具提交，由家长在确认卡上点「允许」后才真正生效。',
     '- 日程与特殊日、账号、身高体重、商品分类与现金比例也都有对应工具；写之前先用查询工具确认现状，改动一律走工具。',
     '- 批量导入身高体重时用 add_growth_records 一次提交，由服务端按日期从早到晚结算；回复里的「合计积分」直接引用工具返回值，不要自己累加。上一条记录没量身高时，服务端会自动往前找最近一条有身高的记录作为基准。',
+    '- 成长积分规则：每条记录固定 +2 分（growth_record_reward）；身高相对上一条有效记录每变化 1cm ±10 分（growth_reward_per_cm）；同一天覆盖只补差额；上一条没量身高就继续往前找；删除记录按该条 awarded 回退。解释加分时必须引用工具返回的 awarded，不要自己按公式另算。',
+    '- 删除也都有工具：成长记录 delete_growth_record、日记 delete_diary、临时任务 manage_adhoc_task、周期任务 manage_recurring_task、心愿 delete_wish_item、积分项/商品/商品分类/日程/特殊日各自的 manage_*、孩子账号 delete_child、技能 delete_skill、记忆 delete_memory。删除前先用对应查询工具拿 id（list_growth_records / list_diaries / list_tasks / list_wish_items 等），把「删什么 + 影响（如回退多少积分）」讲清楚；家长确认后再提交。不得再回答「系统没有删除工具」。',
+    '- 「送孩子一个东西 / 放进背包」用 gift_backpack_item：先 list_shop 查商品；有对应商品就问清给谁、数量、理由再送。商城没有该商品时，必须先 ask_user 说明「背包里的东西需要先在商城上架」，并问「这个商品标多少积分、是否上架」；价格只能用家长明确给出的数字，严禁默认 1 分（否则孩子可能用 1 积分兑换走）。拿到答复后再 manage_product 建 kind=prop、cost=家长给的价格、stock=-1，然后赠送。家长说「送」时默认先按「放进背包」理解，追问选项里必须有「放入背包」。',
     '- 家长确认前只能说「已提交，等你确认」，绝不能说「已经加好了」「已完成」。',
-    '- 同一个操作不要重复提交；确认卡弹过一次就等结果。',
+    '- 同一个操作不要重复提交；工具返回「已执行」就停手，不要因为没看到结果再发一次。创建商品、积分记录前先查一遍是否已存在。',
+    '- 工具返回「待确认」只表示确认单已生成，不代表已执行；只有看到「已执行」才算生效。家长口头说「确认 / 允许」也不能当成已执行，必须等工具结果。',
     '',
     '# 六、工具与计划',
     '- 多步骤任务（3 步以上）先在 update_plan 里列步骤，开始 / 完成一步就更新状态。',
     '- ask_user 一次把要问的问完（最多 4 题），家长答过的不要再问。',
     '- 同一个信息不要反复查；工具报错就说清原因，不要静默重试同一调用。',
+    '- 不要用「我先查一下，回头再告诉你」结束回合：要查就当场调用工具，同一条回复里查完并给结论；只有确实需要家长补充信息时才用 ask_user。',
     '',
     '# 七、长期记忆',
     '- 只记「工具查不到、长期有用」的信息：家长的偏好与忌讳、说话与操作习惯、常用流程、沟通方式。',
@@ -566,15 +747,18 @@ async function runLoop(opts: {
     const lastUserText = getLastUserText(sessionId);
     const memoryHits = searchMemory(lastUserText, 4);
     const now = new Date();
-    const system = systemPrompt(now, memoryHits, buildFamilySnapshot(now), userName);
+    const fullHistory = rebuildHistory(sessionId);
+    const state = extractSessionState(fullHistory);
+    const system = systemPrompt(now, memoryHits, buildFamilySnapshot(now), userName) + renderStateBlock(state);
     // 配了上下文窗口就按预算裁掉最旧的历史；要给系统提示词、工具清单和输出留出余量
     const historyBudget = api.contextWindow
       ? Math.max(1000, api.contextWindow - (api.maxTokens ?? 0) - estimateTokens(system) - 1500)
       : 0;
     const messages: LlmMessage[] = [
       { role: 'system', content: system },
-      ...trimHistoryToBudget(rebuildHistory(sessionId), historyBudget),
+      ...trimHistoryToBudget(recentTurns(fullHistory, 2), historyBudget),
     ];
+    applyTurnFocus(messages, state.open);
 
     // 识图走单独的供应商开关（没单独开启时回落到聊天供应商）
     const visionApi = getAiVisionApi();
@@ -622,6 +806,126 @@ async function runLoop(opts: {
       }
     }
 
+    /**
+     * 工具调用格式彻底失败时的兜底：
+     * 服务端先用家长这句话补搜一次资料，再关掉工具让模型纯文本回答。
+     * 网上的内容仍要求模型标注站点与链接，搜不到就如实说明。
+     */
+    async function answerTextOnly(): Promise<void> {
+      let question = '';
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m.role === 'user' && typeof m.content === 'string' && !m.content.startsWith('【系统提示】')) {
+          question = m.content;
+          break;
+        }
+      }
+      let refs = '';
+      const query = question.replace(/\s+/g, ' ').trim().slice(0, 80);
+      if (query) {
+        try {
+          const found = await webSearch(query, 5);
+          if (found.hits.length) {
+            refs =
+              '\n\n以下是服务端刚联网查到的资料，可参考；引用时必须写清站点名和链接，并自行判断可信度：\n' +
+              found.hits
+                .map(
+                  (h, i) =>
+                    `${i + 1}. ${h.title}\n   来源：${h.site}\n   链接：${h.url}\n   摘要：${h.snippet || '（无摘要）'}`
+                )
+                .join('\n');
+          }
+        } catch {
+          /* 联网失败就按纯文本回答 */
+        }
+      }
+      messages.push({
+        role: 'user',
+        content:
+          '【系统提示】模型端当前无法完成工具调用，请不要再输出任何工具调用标记。' +
+          '直接用中文文字回答家长；涉及系统操作的部分，如实说明这次没能执行、请稍后重试。' +
+          '不确定的信息要明说，不要编造。' +
+          refs,
+      });
+
+      emitStatus('thinking');
+      let answer = '';
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 120_000);
+      activeAbort.set(sessionId, ctrl);
+      try {
+        const wantVision = messagesHaveImage(messages);
+        const fb = await callLlm(
+          {
+            baseUrl: wantVision ? visionTarget.baseUrl : api.baseUrl,
+            apiKey: wantVision ? visionTarget.apiKey : api.apiKey,
+            model: wantVision ? visionTarget.model : api.chatModel,
+            temperature: api.temperature,
+            maxTokens: api.maxTokens,
+          },
+          messages,
+          { stream: true, signal: ctrl.signal, onDelta: (chunk) => { answer += chunk; } }
+        );
+        answer = (fb.text || answer).trim();
+      } catch {
+        if (stopRequested.has(sessionId)) {
+          const partial = answer.trim();
+          if (partial) {
+            const messageId = insertMessage(sessionId, 'assistant', partial, undefined, { stopped: true });
+            touchSession(sessionId);
+            emit('ai_chat_delta', { text: partial });
+            emit('ai_chat_done', { messageId, stopped: true });
+          } else {
+            emit('ai_chat_done', { messageId: null, stopped: true });
+          }
+          return;
+        }
+        answer = '';
+      } finally {
+        clearTimeout(timer);
+        if (activeAbort.get(sessionId) === ctrl) activeAbort.delete(sessionId);
+      }
+
+      if (TOOL_FORMAT_FAILURE_RE.test(answer)) answer = '';
+      const finalText =
+        answer || '模型端暂时无法完成工具调用，这次没能执行操作。请稍后重试，或换个说法再发一次。';
+      const messageId = insertMessage(sessionId, 'assistant', finalText);
+      touchSession(sessionId);
+      emit('ai_chat_delta', { text: finalText });
+      emit('ai_chat_done', { messageId });
+    }
+
+    /** 模型跑完工具却没给正文时，关掉工具再要一次纯文字结论 */
+    async function summarizeWithoutTools(): Promise<string> {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 90_000);
+      activeAbort.set(sessionId, ctrl);
+      try {
+        const wantVision = messagesHaveImage(messages);
+        const r = await callLlm(
+          {
+            baseUrl: wantVision ? visionTarget.baseUrl : api.baseUrl,
+            apiKey: wantVision ? visionTarget.apiKey : api.apiKey,
+            model: wantVision ? visionTarget.model : api.chatModel,
+            temperature: api.temperature,
+            maxTokens: api.maxTokens,
+          },
+          messages,
+          { stream: true, signal: ctrl.signal }
+        );
+        return (r.text || '').trim();
+      } catch {
+        return '';
+      } finally {
+        clearTimeout(timer);
+        if (activeAbort.get(sessionId) === ctrl) activeAbort.delete(sessionId);
+      }
+    }
+
+    /** 上游工具调用格式失败只重试一次，避免死循环 */
+    let formatRetried = false;
+
+    const turnAsk = { asked: false, answers: '' };
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const offerTools = round < MAX_TOOL_ROUNDS;
       // 已点「停止」：不再发起新一轮模型调用（可能是在工具/问答等待期间点的）
@@ -646,6 +950,18 @@ async function runLoop(opts: {
       let streamed = '';
       /** 本轮模型的思考增量（火山方舟等供应商会返回 reasoning_content）：只展示，不回灌模型 */
       let reasoning = '';
+      /** 前 160 字先压住：上游代理可能把「工具调用格式错误」当正文吐出来，识别后整轮丢弃 */
+      let headBuf = '';
+      let proxyFailure = false;
+      const pushDelta = (chunk: string) => {
+        if (!chunk) return;
+        if (!writing) {
+          writing = true;
+          emitStatus('writing');
+        }
+        streamed += chunk;
+        emit('ai_chat_delta', { text: chunk });
+      };
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 120_000);
       activeAbort.set(sessionId, ctrl);
@@ -666,12 +982,22 @@ async function runLoop(opts: {
             stream: true,
             signal: ctrl.signal,
             onDelta: (chunk) => {
-              if (!writing) {
-                writing = true;
-                emitStatus('writing');
+              if (proxyFailure) return;
+              if (headBuf.length < PROXY_FAILURE_HEAD) {
+                headBuf += chunk;
+                if (TOOL_FORMAT_FAILURE_RE.test(headBuf)) {
+                  proxyFailure = true;
+                  headBuf = '';
+                  streamed = '';
+                  return;
+                }
+                if (headBuf.length >= PROXY_FAILURE_HEAD) {
+                  pushDelta(headBuf);
+                  headBuf = '';
+                }
+                return;
               }
-              streamed += chunk;
-              emit('ai_chat_delta', { text: chunk });
+              pushDelta(chunk);
             },
             onReasoning: (chunk) => {
               reasoning += chunk;
@@ -703,24 +1029,62 @@ async function runLoop(opts: {
         if (activeAbort.get(sessionId) === ctrl) activeAbort.delete(sessionId);
       }
 
+      // 正常回答：把开头压住的那段补推给前端
+      if (!proxyFailure && headBuf) {
+        pushDelta(headBuf);
+        headBuf = '';
+      }
+
       const text = response.text.trim();
-      if (!response.toolCalls.length || !offerTools) {
-        const finalText = text || (response.toolCalls.length ? '（工具调用轮次已达上限，请换个说法重试）' : '');
-        if (finalText) {
-          const messageId = insertMessage(
-            sessionId,
-            'assistant',
-            finalText,
-            undefined,
-            reasoning ? { reasoning } : undefined
-          );
-          touchSession(sessionId);
-          // 个别端点忽略 stream 会一次性返回：此时流里没有增量，补推一次保证界面有内容
-          if (!text) emit('ai_chat_delta', { text: finalText });
-          emit('ai_chat_done', { messageId });
-        } else {
-          emit('ai_chat_done', { messageId: null });
+
+      // 上游把「工具调用格式错误」当正文返回：不要当成最终回答，先重试一次标准 tool_calls；
+      // 仍失败就关掉工具，由服务端补搜资料后让模型纯文字回答。
+      const toolFormatFailed =
+        proxyFailure || (!response.toolCalls.length && TOOL_FORMAT_FAILURE_RE.test(text));
+      if (toolFormatFailed) {
+        if (!formatRetried) {
+          formatRetried = true;
+          messages.push({
+            role: 'user',
+            content:
+              '【系统提示】上一条回复被上游判定为工具调用格式错误，本轮没有执行。' +
+              '请严格按接口定义输出标准 tool_calls（JSON 参数），不要输出 XML、Markdown 代码块或普通文本形式的工具标记；' +
+              '如果不需要工具，就直接用中文文字回答。',
+          });
+          continue;
         }
+        await answerTextOnly();
+        return;
+      }
+
+      if (!response.toolCalls.length || !offerTools) {
+        let finalText = text || (response.toolCalls.length ? '（工具调用轮次已达上限，请换个说法重试）' : '');
+        // 模型只跑了工具、正文却是空的：别再静默结束，强制要一次文字结论
+        if (!finalText) {
+          messages.push({
+            role: 'user',
+            content:
+              '【系统提示】请直接用中文把结论告诉家长，不要再调用任何工具。' +
+              '如果刚才的查询信息不够，就说清楚缺什么、需要家长确认什么；' +
+              '不要只回复过程，也不要说「我去查一下」然后结束。',
+          });
+          finalText = await summarizeWithoutTools();
+          if (TOOL_FORMAT_FAILURE_RE.test(finalText)) finalText = '';
+        }
+        if (!finalText) {
+          finalText = '这次没有生成结论。请把问题再发一次，或说得更具体一点，我马上接着查。';
+        }
+        const messageId = insertMessage(
+          sessionId,
+          'assistant',
+          finalText,
+          undefined,
+          reasoning ? { reasoning } : undefined
+        );
+        touchSession(sessionId);
+        // 个别端点忽略 stream 会一次性返回：此时流里没有增量，补推一次保证界面有内容
+        if (!text) emit('ai_chat_delta', { text: finalText });
+        emit('ai_chat_done', { messageId });
         return;
       }
 
@@ -796,6 +1160,8 @@ async function runLoop(opts: {
                   .join('\n')}`
               : '家长没有回答（跳过或超时）。请基于已知信息继续；不确定的地方按最保守的方式处理，并说明你的假设。';
           }
+          turnAsk.asked = true;
+          turnAsk.answers = resultText;
           messages.push({ role: 'tool', content: resultText, toolCallId: call.id });
           insertMessage(sessionId, 'tool', resultText, undefined, {
             toolCallId: call.id,
@@ -863,6 +1229,9 @@ async function runLoop(opts: {
             userId,
             taskId,
             actor,
+            lastUserText: getLastUserText(sessionId),
+            askedThisTurn: turnAsk.asked,
+            askAnswers: turnAsk.answers,
           });
           if (outcome.kind === 'result') {
             resultText = outcome.text;
@@ -904,6 +1273,7 @@ async function runLoop(opts: {
         emit('ai_chat_tool', {
           tool: call.name,
           summary: confirmInfo ? confirmInfo.summary : resultText.slice(0, 200),
+          detail: confirmInfo?.detail,
           needsConfirm: Boolean(confirmInfo),
           token: confirmInfo?.token,
           args: previewArgs(call.argumentsJson),

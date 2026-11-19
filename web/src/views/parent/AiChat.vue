@@ -7,6 +7,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import AiAskQuestionPanel from '@/components/AiAskQuestionPanel.vue';
+import AiConfirmPanel from '@/components/AiConfirmPanel.vue';
 import { useWsStore } from '@/stores/ws';
 
 /**
@@ -84,10 +85,9 @@ function openSessionMenuById(id: number, ev: Event): void {
   openSessionMenu({ clientX: rect.left, clientY: rect.bottom + 4 } as MouseEvent, id);
 }
 
-const safetyOptions: { mode: 'alwaysAsk' | 'onDemand' | 'allowAll'; title: string; desc: string }[] = [
-  { mode: 'alwaysAsk', title: '始终询问', desc: '每次执行写操作前都要家长确认' },
-  { mode: 'onDemand', title: '按需确认', desc: '只针对有风险的操作（外部 MCP、写入技能文件）进行询问' },
-  { mode: 'allowAll', title: '全部允许', desc: '不再询问，AI 直接执行写操作并全部记入审计' },
+const safetyOptions: { mode: 'alwaysAsk' | 'allowAll'; title: string; desc: string }[] = [
+  { mode: 'alwaysAsk', title: '全部询问', desc: '每次修改数据前都要家长确认' },
+  { mode: 'allowAll', title: '全部允许', desc: '不再询问，AI 直接修改数据并全部记入审计' },
 ];
 
 const safetyLabel = computed(() => {
@@ -106,7 +106,7 @@ function closeSafetyMenu(): void {
   safetyMenu.value = null;
 }
 
-async function pickSafety(mode: 'alwaysAsk' | 'onDemand' | 'allowAll'): Promise<void> {
+async function pickSafety(mode: 'alwaysAsk' | 'allowAll'): Promise<void> {
   closeSafetyMenu();
   if (!auth.user?.isPrimary) {
     toast.warning('安全策略仅主家长可修改');
@@ -188,6 +188,7 @@ function stopWaitClock(): void {
   waitTool.value = '';
 }
 const confirms = ref<ConfirmCard[]>([]);
+const confirmBusy = ref(false);
 /** 计划步骤（与后端 update_plan 对齐） */
 type PlanStep = { title: string; status: 'pending' | 'in_progress' | 'done' };
 /** 回合状态（与后端 turnState 对齐） */
@@ -234,7 +235,72 @@ async function loadPendingQuestions(): Promise<void> {
     /* 离线/未登录：保留本地已有的队列，等下次同步 */
   }
 }
+
+/** 写操作确认卡：刷新/切页/WS 掉线后从服务端补弹，避免只在聊天记录里一闪而过 */
+let confirmPollTimer: number | null = null;
+/**
+ * 兜底轮询：回合进行中或有待确认卡时每 2 秒同步一次，
+ * 空闲且没有确认卡时不发请求（常驻定时器也不会空转）。
+ */
+function startConfirmPoll(): void {
+  if (confirmPollTimer != null) return;
+  confirmPollTimer = window.setInterval(() => {
+    if (!sending.value && !confirms.value.length) return;
+    void loadPendingConfirms();
+  }, 2000);
+}
+function stopConfirmPoll(): void {
+  if (confirmPollTimer != null) {
+    clearInterval(confirmPollTimer);
+    confirmPollTimer = null;
+  }
+}
+
+async function loadPendingConfirms(): Promise<void> {
+  try {
+    const data = await api.get<{ confirms: ConfirmCard[] }>('/ai/pending-confirms');
+    const list = data.confirms ?? [];
+    // 合并而不是覆盖：避免同步结果暂时为空时把刚推来的确认卡清掉
+    const map = new Map(confirms.value.map((c) => [c.token, c] as const));
+    for (const c of list) map.set(c.token, c);
+    confirms.value = [...map.values()];
+  } catch {
+    /* 旧服务端没有这个接口时保留本地确认卡 */
+  }
+}
 const attachments = ref<Attachment[]>([]);
+
+/* 输入框草稿：按会话存 localStorage，切到别的栏目/刷新回来不丢 */
+const DRAFT_PREFIX = 'manalong:ai-draft:';
+let draftLoaded = false;
+function draftKey(): string {
+  return `${DRAFT_PREFIX}${activeSessionId.value ?? 'new'}`;
+}
+function saveDraft(): void {
+  if (!draftLoaded) return; // 首次加载前别用空输入覆盖已存草稿
+  try {
+    if (!inputText.value && attachments.value.length === 0) {
+      localStorage.removeItem(draftKey());
+    } else {
+      localStorage.setItem(draftKey(), JSON.stringify({ text: inputText.value, attachments: attachments.value }));
+    }
+  } catch {
+    /* 隐私模式/配额满：忽略 */
+  }
+}
+function restoreDraft(): void {
+  try {
+    const raw = localStorage.getItem(draftKey());
+    const data = raw ? JSON.parse(raw) : null;
+    inputText.value = typeof data?.text === 'string' ? data.text : '';
+    attachments.value = Array.isArray(data?.attachments) ? data.attachments.slice(0, 6) : [];
+  } catch {
+    inputText.value = '';
+    attachments.value = [];
+  }
+  draftLoaded = true;
+  nextTick(autoGrow);
+}
 /** 图片灯箱：点开对话里的图片放大看（只读，不提供下载） */
 const previewImage = ref<{ url: string; name: string } | null>(null);
 /** 灯箱缩放与平移：滚轮缩放、左键拖动，操作只作用在图片上 */
@@ -257,7 +323,7 @@ type QueueItem = {
 };
 const queue = ref<QueueItem[]>([]);
 const aiReady = ref(true);
-const safety = ref<'alwaysAsk' | 'onDemand' | 'allowAll'>('onDemand');
+const safety = ref<'alwaysAsk' | 'allowAll'>('alwaysAsk');
 const safetyMenu = ref<{ x: number; bottom: number } | null>(null);
 
 /** 清空本回合的实时过程（工具步骤 + 思考）：切会话 / 新回合开始时调用 */
@@ -267,6 +333,10 @@ function resetLiveTools(): void {
 }
 
 const msgsEl = ref<HTMLElement | null>(null);
+/** 用户是否停在消息列表底部：只有贴底时，流式输出/工具进度才自动跟随；
+ *  往上翻看历史时不再把页面拽回最新消息。 */
+let stickToBottom = true;
+const STICK_THRESHOLD = 80;
 const imgInput = ref<HTMLInputElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 
@@ -415,13 +485,16 @@ function fmtArgs(raw: string): string {
   }
 }
 
-function scrollBottom(): void {
+function scrollBottom(force = false): void {
   nextTick(() => {
     const el = msgsEl.value;
-    if (el) {
+    if (!el) return;
+    // 用户主动往上翻看历史时不打扰；只有原本就贴底（或刚发消息强制）才跟随
+    if (force || stickToBottom) {
       el.scrollTop = el.scrollHeight;
-      scheduleActiveNav();
+      stickToBottom = true;
     }
+    scheduleActiveNav();
   });
 }
 
@@ -468,6 +541,11 @@ function updateActiveNav(): void {
 }
 
 function onMsgsScroll(): void {
+  const el = msgsEl.value;
+  if (el) {
+    // 距底部 80px 内都算「贴底」，避免流式内容高度抖动导致跟随失效
+    stickToBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_THRESHOLD;
+  }
   scheduleActiveNav();
 }
 
@@ -503,6 +581,8 @@ function scrollToNavMessage(id: number): void {
   if (!el) return;
   const row = el.querySelector<HTMLElement>(`[data-uid="${id}"]`);
   if (!row) return;
+  // 主动跳到历史消息后，后续流式输出不应把页面再拽回底部
+  stickToBottom = false;
   const cRect = el.getBoundingClientRect();
   const rRect = row.getBoundingClientRect();
   const top = el.scrollTop + (rRect.top - cRect.top) - (el.clientHeight - rRect.height) / 2;
@@ -533,6 +613,7 @@ async function loadQueue(): Promise<void> {
 }
 
 async function pickSession(id: number | null): Promise<void> {
+  saveDraft(); // 先保存离开前的草稿（按旧会话存）
   activeSessionId.value = id;
   try {
     if (id == null) sessionStorage.removeItem(ACTIVE_SESSION_KEY);
@@ -551,18 +632,20 @@ confirms.value = [];
   stopWaitClock();
   // 切会话时清掉上一条会话残留的实时过程（工具步骤 + 思考）
   resetLiveTools();
+  restoreDraft();
   if (id == null) return;
   loadingMessages.value = true;
   try {
     const data = await api.get<{ messages: Msg[] }>(`/ai/sessions/${id}/messages`);
     messages.value = data.messages ?? [];
-    scrollBottom();
+    scrollBottom(true);
 } finally {
     loadingMessages.value = false;
   }
   // 这个会话可能正有回合在跑（刚从别的页面切回来）：恢复「进行中」状态
   await syncTurnState();
   await loadQueue();
+  void loadPendingConfirms();
 }
 
 async function newSession(): Promise<void> {
@@ -769,6 +852,14 @@ async function send(): Promise<void> {
   if (composing.value || blockedByAsk.value) return;
   const text = inputText.value.trim();
   if (!text && attachments.value.length === 0) return;
+  // 有待确认的写操作时，直接打「确认 / 允许」等于点「允许一次」，
+  // 不再把这句话当成新任务发给模型（否则会没有执行却回复已生效）。
+  if (text && !sending.value && confirms.value.length && CONFIRM_WORD_RE.test(text)) {
+    inputText.value = '';
+    resetTextareaHeight();
+    await confirmAllOnce();
+    return;
+  }
   if (activeSessionId.value == null) await newSession();
   const sessionId = activeSessionId.value!;
 
@@ -819,12 +910,13 @@ async function send(): Promise<void> {
       meta: null,
       created_at: Math.floor(Date.now() / 1000),
     });
-    scrollBottom();
+    scrollBottom(true);
     sending.value = true;
     streamingText.value = '';
     resetLiveTools();
     plan.value = [];
     startWaitClock();
+    startConfirmPoll();
   }
   try {
     const data = await api.post<{ queued?: boolean; item?: QueueItem }>(`/ai/sessions/${sessionId}/messages`, {
@@ -844,7 +936,7 @@ async function send(): Promise<void> {
       } else {
         await loadQueue();
       }
-      scrollBottom();
+      scrollBottom(true);
     } else if (wasRunning) {
       // 旧服务端不认 queue 标记：本地以为在跑、服务端其实已空闲，把占位卡片换回聊天气泡
       queue.value = queue.value.filter((q) => q.id !== optimisticId);
@@ -857,7 +949,7 @@ async function send(): Promise<void> {
         created_at: Math.floor(Date.now() / 1000),
       });
       toast.info('上一回合刚好结束，这条消息已直接发送');
-      scrollBottom();
+      scrollBottom(true);
     }
   } catch (err) {
     messages.value = messages.value.filter((m) => m.id !== optimisticId);
@@ -1133,13 +1225,20 @@ function onWsEvent(e: Event): void {
       args: msg.args ?? '',
       result: msg.result ?? '',
     });
+    // 工具事件本身就带确认 token：即使 ai_chat_confirm 事件漏了，也能立刻弹面板
+    if (msg.needsConfirm && msg.token && !confirms.value.some((c) => c.token === msg.token)) {
+      confirms.value.push({
+        token: msg.token,
+        summary: msg.summary || 'AI 请求执行操作',
+        detail: msg.detail || msg.summary || '',
+      });
+    }
     scrollBottom();
   } else if (msg.type === 'ws:ai_chat_confirm') {
     if (!confirms.value.some((c) => c.token === msg.token)) {
       confirms.value.push({ token: msg.token, summary: msg.summary, detail: msg.detail });
     }
-    scrollBottom();
-} else if (msg.type === 'ws:ai_chat_done' || msg.type === 'ws:ai_chat_error') {
+  } else if (msg.type === 'ws:ai_chat_done' || msg.type === 'ws:ai_chat_error') {
     if (msg.type === 'ws:ai_chat_error') toast.warning(msg.error || 'AI 出错了');
     stopWaitClock();
     streamingText.value = '';
@@ -1148,6 +1247,7 @@ function onWsEvent(e: Event): void {
     sending.value = false;
     void reloadMessages();
     void loadQueue();
+    void loadPendingConfirms();
   } else if (msg.type === 'ws:ai_chat_queue') {
     queue.value = Array.isArray(msg.items) ? msg.items : [];
   } else if (msg.type === 'ws:ai_chat_queue_sent') {
@@ -1170,6 +1270,7 @@ function onWsEvent(e: Event): void {
       liveReasoning.value = '';
       plan.value = [];
       startWaitClock();
+      startConfirmPoll();
     }
     scrollBottom();
   } else if (msg.type === 'ws:ai_chat_guidance') {
@@ -1187,7 +1288,7 @@ function onWsEvent(e: Event): void {
       created_at: Math.floor(Date.now() / 1000),
     });
     toast.info('引导已送达，AI 会立刻参考你的补充重新回答');
-    scrollBottom();
+    scrollBottom(true);
   } else if (msg.type === 'ws:ai_chat_warning') {
     toast.warning(msg.text || 'MCP 连接有问题');
   }
@@ -1201,6 +1302,31 @@ async function reloadMessages(): Promise<void> {
 }
 
 /* ── 确认卡 ────────────────────────────────────────────────────────────── */
+
+const CONFIRM_WORD_RE = /^(确认|允许|同意|可以|好的?|行|执行|继续|确定|ok|yes)[!！。.\s]*$/i;
+
+/** 家长直接打字「确认 / 允许」时，等价于点「允许一次」把队列里的确认全部执行 */
+async function confirmAllOnce(): Promise<void> {
+  if (confirmBusy.value) return;
+  confirmBusy.value = true;
+  try {
+    for (const card of [...confirms.value]) await confirmAction(card, 'once');
+  } finally {
+    confirmBusy.value = false;
+  }
+}
+
+/** 确认面板：一次只显示队首；选「本次任务都允许 / 拒绝」时把队列里的都处理掉 */
+async function confirmPending(choice: 'once' | 'task' | 'deny'): Promise<void> {
+  if (confirmBusy.value) return;
+  confirmBusy.value = true;
+  try {
+    const cards = choice === 'once' ? confirms.value.slice(0, 1) : [...confirms.value];
+    for (const card of cards) await confirmAction(card, choice);
+  } finally {
+    confirmBusy.value = false;
+  }
+}
 
 async function confirmAction(card: ConfirmCard, choice: 'once' | 'task' | 'deny'): Promise<void> {
   try {
@@ -1276,6 +1402,9 @@ await loadSessions();
   await pickSession(sessions.value[0]?.id ?? null);
   // 回到这个页面时可能已经有"等回答"的问题（之前不在界面/断网/刷新）
   await loadPendingQuestions();
+  await loadPendingConfirms();
+  // 确认卡兜底同步：回合进行中/有未处理确认时每 2 秒拉一次，不用切页面才弹
+  startConfirmPoll();
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('focus', onVisibilityChange);
   window.addEventListener('online', onVisibilityChange);
@@ -1320,6 +1449,7 @@ watch(
 
 // 提问卡片 / 计划列表出现会改变布局：自动贴到底部，避免最新一条消息被挡住还得手动拉
 onUnmounted(() => {
+  saveDraft();
   for (const t of wsTypes) window.removeEventListener(`ws:${t}`, onWsEvent);
   document.removeEventListener('click', onDocClick, { capture: true });
   document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -1330,6 +1460,7 @@ onUnmounted(() => {
   if (navScrollRaf) cancelAnimationFrame(navScrollRaf);
   stopWaitClock();
   stopAskPoll();
+  stopConfirmPoll();
 });
 
 /** 当前会话有等待回答的提问：先把问题答完再发，避免无谓的 409 */
@@ -1339,6 +1470,9 @@ const blockedByAsk = computed(() => Boolean(ask.value && ask.value.sessionId ===
 watch(ask, () => scrollBottom());
 watch(blockedByAsk, () => scrollBottom());
 watch(plan, () => scrollBottom());
+// 输入过程中随时存草稿，切页面/刷新回来不丢
+watch(inputText, saveDraft);
+watch(attachments, saveDraft, { deep: true });
 const canSend = computed(
   () =>
     !blockedByAsk.value &&
@@ -1394,7 +1528,7 @@ const composerMode = computed<'stop' | 'queue' | 'send'>(() => {
     <!-- 右侧对话区 -->
     <div class="ai-main">
       <header class="ai-head glass">
-        <span class="ai-title">AI 助手</span>
+        <span class="ai-title">满伴助手</span>
       </header>
 
       <div v-if="!aiReady" class="not-ready glass">
@@ -1517,15 +1651,6 @@ const composerMode = computed<'stop' | 'queue' | 'send'>(() => {
           </div>
         </div>
 
-        <div v-for="card in confirms" :key="card.token" class="confirm-card glass">
-          <div class="cc-title">⚠️ AI 请求执行操作，请确认</div>
-          <div class="cc-body">{{ card.detail }}</div>
-          <div class="cc-actions">
-            <button class="btn btn-success small" @click="confirmAction(card, 'once')">✅ 允许一次</button>
-            <button class="btn small" @click="confirmAction(card, 'task')">🔁 本次任务都允许</button>
-            <button class="btn small danger" @click="confirmAction(card, 'deny')">✖ 拒绝</button>
-          </div>
-        </div>
 </div>
 
         <!-- 右侧消息导航：小横线定位，悬浮展开历史提问，点击平滑滚回 -->
@@ -1561,6 +1686,16 @@ const composerMode = computed<'stop' | 'queue' | 'send'>(() => {
           </div>
         </div>
       </div>
+
+      <!-- 写操作确认：和 Ask Question 一样贴着输入框上方的上拉卡片，确保一定会看到 -->
+      <AiConfirmPanel
+        v-if="confirms.length"
+        :card="confirms[0]"
+        :index="0"
+        :total="confirms.length"
+        :busy="confirmBusy"
+        @choose="confirmPending"
+      />
 
       <!-- Ask Question：贴着输入框上方的上拉卡片，不遮挡聊天记录 -->
       <AiAskQuestionPanel
@@ -2426,27 +2561,6 @@ const composerMode = computed<'stop' | 'queue' | 'send'>(() => {
   padding: 2px 8px;
   border-radius: var(--r-full);
   color: #2f6b52;
-}
-.confirm-card {
-  border: 1.5px solid rgba(230, 140, 40, 0.55);
-  background: linear-gradient(160deg, rgba(255, 244, 220, 0.95), rgba(255, 232, 190, 0.9));
-  border-radius: var(--r-md);
-  padding: var(--space-10) var(--space-14);
-}
-.cc-title {
-  font-weight: 700;
-  font-size: var(--fs-sm);
-  margin-bottom: var(--space-4);
-}
-.cc-body {
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  margin-bottom: var(--space-8);
-  white-space: pre-wrap;
-}
-.cc-actions {
-  display: flex;
-  gap: var(--space-8);
 }
 
 /* ── 底部输入区 ── */

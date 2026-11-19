@@ -11,13 +11,17 @@ import {
   type ActorInfo,
   type PendingChoice,
 } from './sentinel.js';
-import { searchMemory, saveMemoryNote } from './memory.js';
-import { listSkills, setSkillEnabled, writeSkillFolder } from './skills.js';
+import { searchMemory, saveMemoryNote, listMemoryNotes, deleteMemoryNote } from './memory.js';
+import { listSkills, setSkillEnabled, writeSkillFolder, deleteSkillFolder } from './skills.js';
 import { getAiMcp } from './settings.js';
 import { callMcpTool } from './mcp.js';
 import { dayEffectFor, effectSuffix, effectInfo, dateOfTs, todayLocal, ruleHits } from '../dayEffect.js';
 import { awardContribution } from '../../routes/contribution.js';
-import { recordGrowthRecord } from '../../routes/growth.js';
+import { recordGrowthRecord, deleteGrowthRecord } from '../../routes/growth.js';
+import { deleteDiaryRecord } from '../../routes/diaries.js';
+import { deleteChildAccount } from '../../routes/children.js';
+import { deleteRecurringTask, clearRecurringTaskClaims, deleteRecurringClaim } from '../../routes/recurring-tasks.js';
+import { giftBackpackItem } from '../../routes/backpacks.js';
 import { hashPasswordSync, isValidPin } from '../../auth.js';
 
 /**
@@ -29,7 +33,19 @@ import { hashPasswordSync, isValidPin } from '../../auth.js';
  *   - 每一次实际执行都写 operation_logs：module=AI，action=「被执行模块 · 动作」。
  */
 
-export type ToolCtx = { userId: number; taskId: string; actor: ActorInfo; /** 流程技能内部步骤：整体已过 Sentinel，单步不再重复询问 */ bypassJudge?: boolean };
+export type ToolCtx = {
+  userId: number;
+  taskId: string;
+  actor: ActorInfo;
+  /** 流程技能内部步骤：整体已过 Sentinel，单步不再重复询问 */
+  bypassJudge?: boolean;
+  /** 本轮最新一条家长消息（用于判断价格等是否家长明确给出） */
+  lastUserText?: string;
+  /** 本轮是否已经问过家长 */
+  askedThisTurn?: boolean;
+  /** 本轮家长在问答面板里的回答原文 */
+  askAnswers?: string;
+};
 
 export type ToolOutcome =
   | { kind: 'result'; text: string }
@@ -45,22 +61,23 @@ case 'add_point_records':
     case 'create_tasks':
     case 'list_tasks':
     case 'manage_adhoc_task':
+    case 'manage_recurring_task':
     case 'review_task_completion':
     case 'list_pending_reviews': return '任务';
     case 'list_shop':
     case 'manage_product':
     case 'handle_exchange': return '商城';
-    case 'get_backpack': return '背包';
+    case 'get_backpack':
+    case 'gift_backpack_item': return '背包';
     case 'ask_user': return '问答';
     case 'update_plan': return '计划';
     case 'get_point_summary':
     case 'list_children': return '查询';
-    case 'memory_save':
-    case 'memory_search': return '记忆';
     case 'web_search':
     case 'web_fetch': return '联网';
     case 'create_skill':
-    case 'run_skill': return '技能';
+    case 'run_skill':
+    case 'delete_skill': return '技能';
     case 'list_calendar':
     case 'create_calendar_event':
     case 'manage_calendar_event':
@@ -68,14 +85,22 @@ case 'add_point_records':
     case 'manage_special_day': return '日历';
     case 'list_accounts':
     case 'create_child':
-    case 'create_parent': return '账号';
+    case 'create_parent':
+    case 'delete_child': return '账号';
     case 'list_growth_records':
     case 'add_growth_record':
-    case 'add_growth_records': return '成长';
-    case 'list_diaries': return '日记';
+    case 'add_growth_records':
+    case 'delete_growth_record': return '成长';
+    case 'list_diaries':
+    case 'delete_diary': return '日记';
     case 'list_operation_logs': return '历史';
     case 'manage_product_category':
-    case 'set_cash_rate': return '商城';
+    case 'set_cash_rate':
+    case 'list_wish_items':
+    case 'delete_wish_item': return '商城';
+    case 'memory_save':
+    case 'memory_search':
+    case 'delete_memory': return '记忆';
     default: return 'AI';
   }
 }
@@ -95,6 +120,12 @@ function auditExec(actor: ActorInfo, moduleName: string, action: string, detail:
   } catch {
     /* 审计失败不影响执行 */
   }
+}
+
+/** 文本里是否出现了某个数字（按独立数字匹配，1 不会命中 10） */
+function numberInText(text: string, n: number): boolean {
+  const s = String(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|\\D)${s}(?:\\D|$)`).test(text);
 }
 
 /* ── 工具清单（给模型的 JSON Schema） ─────────────────────────────────── */
@@ -131,6 +162,25 @@ export const builtinToolSpecs: LlmToolSpec[] = [
     parameters: {
       type: 'object',
       properties: { ...childRef.properties },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'gift_backpack_item',
+    description:
+      '直接赠送商品到孩子背包（不扣积分、不减库存、不走兑换）。家长说「送孩子一个东西 / 放进背包」时用这个，' +
+      '不要用加分代替，也不要新建 0 积分商品。商品必须是商城里已上架的；可传 productId，或传 productName 由系统匹配。' +
+      '如果商城里没有这个商品，先用 manage_product 新建一个 kind=prop、cost≥1 的道具再赠送。属写操作，需家长确认。',
+    parameters: {
+      type: 'object',
+      properties: {
+        ...childRef.properties,
+        productId: { type: 'integer', description: '商品 id（list_shop 返回）' },
+        productName: { type: 'string', description: '商品名关键词；没有 productId 时用它匹配' },
+        quantity: { type: 'integer', description: '数量 1~20，默认 1' },
+        reason: { type: 'string', description: '赠送理由，会展示给孩子' },
+      },
+      required: ['reason'],
       additionalProperties: false,
     },
   },
@@ -279,7 +329,9 @@ export const builtinToolSpecs: LlmToolSpec[] = [
   },
   {
     name: 'manage_product',
-    description: '新增/修改/删除/上下架商品（action=create / update / delete / toggle）。属写操作，需家长确认。',
+    description:
+      '新增/修改/删除/上下架商品（action=create / update / delete / toggle）。属写操作，需家长确认。' +
+      '新建商品的价格必须来自家长明确说出的数字，不能猜；家长只说「送个东西」时，先 ask_user 问标多少积分，再创建。',
     parameters: {
       type: 'object',
       properties: {
@@ -726,6 +778,120 @@ description:
       additionalProperties: false,
     },
   },
+  {
+    name: 'delete_growth_record',
+    description:
+      '删除成长记录（可批量），删除后该条记录发出的积分自动回退，并重算后面记录的增减量。' +
+      '先用 list_growth_records 查到记录 id（形如 [#12]）。属写操作，需家长确认。',
+    parameters: {
+      type: 'object',
+      properties: {
+        recordIds: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 100,
+          items: { type: 'integer' },
+          description: '要删除的记录 id 列表',
+        },
+      },
+      required: ['recordIds'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'delete_diary',
+    description:
+      '删除成长日记（可批量），同时清理不再被引用的附件。先用 list_diaries 查到日记 id（形如 [#12]）。属写操作，需家长确认。',
+    parameters: {
+      type: 'object',
+      properties: {
+        diaryIds: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 50,
+          items: { type: 'integer' },
+          description: '要删除的日记 id 列表',
+        },
+      },
+      required: ['diaryIds'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'manage_recurring_task',
+    description:
+      '管理周期任务：delete=删除任务本身，clear_claims=清空某任务的全部领取/完成记录（任务保留），' +
+      'delete_claim=删除单条领取记录。先用 list_tasks 查任务 id 或 claimId。属写操作，需家长确认。',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['delete', 'clear_claims', 'delete_claim'] },
+        taskId: { type: 'integer', description: 'delete / clear_claims 必填' },
+        claimId: { type: 'integer', description: 'delete_claim 必填（list_tasks 里的 claimId）' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'list_wish_items',
+    description: '列出孩子的心愿单（id、心愿名、状态、所属孩子），删除心愿前先用它拿 id。',
+    parameters: {
+      type: 'object',
+      properties: {
+        childId: { type: 'integer', description: '可选，只看某个孩子' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'delete_wish_item',
+    description: '删除一条心愿单记录（家长可删任意状态）。先用 list_wish_items 查 id。属写操作，需家长确认。',
+    parameters: {
+      type: 'object',
+      properties: { wishItemId: { type: 'integer' } },
+      required: ['wishItemId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'delete_child',
+    description:
+      '删除孩子账号，并级联删除其任务、积分流水、成长记录、兑换申请等全部关联数据（不可恢复）。' +
+      '必须先 list_children 拿 id，并传入与系统一致的孩子名字做二次校验。高风险，需家长确认。',
+    parameters: {
+      type: 'object',
+      properties: {
+        childId: { type: 'integer' },
+        childName: { type: 'string', description: '孩子名字，必须与系统里完全一致' },
+      },
+      required: ['childId', 'childName'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'delete_skill',
+    description: '删除（卸载）技能目录里的技能。仅主家长可用；内置技能不可删。属写操作，需家长确认。',
+    parameters: {
+      type: 'object',
+      properties: { folder: { type: 'string', description: '技能文件夹名' } },
+      required: ['folder'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'delete_memory',
+    description:
+      '删除一条长期记忆笔记。仅主家长可用。可传 permalink，或传笔记标题由系统匹配。属写操作，需家长确认。',
+    parameters: {
+      type: 'object',
+      properties: {
+        permalink: { type: 'string', description: '笔记文件名（不含 .md）' },
+        title: { type: 'string', description: '笔记标题；不知道 permalink 时用它' },
+      },
+      additionalProperties: false,
+    },
+  },
 ];
 
 /* ── 内部查询 ──────────────────────────────────────────────────────────── */
@@ -929,6 +1095,38 @@ function pendingReviewsText(): string {
   return tasksOverview() + '\n\n' + shopText();
 }
 
+const WISH_STATUS_CN: Record<string, string> = {
+  pending: '待家长处理',
+  confirming: '待孩子确认',
+  active: '进行中',
+  completed: '可领取',
+  claimed: '已领取',
+  cancelled: '已撤销',
+};
+
+function wishItemsText(childId?: number): string {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT w.id, COALESCE(NULLIF(w.name, ''), p.name, '（未命名心愿）') AS name, w.status,
+              w.days_required, u.name AS child
+       FROM wish_items w
+       JOIN users u ON u.id = w.child_id
+       LEFT JOIN products p ON p.id = w.product_id
+       WHERE (? IS NULL OR w.child_id = ?)
+       ORDER BY w.created_at DESC LIMIT 50`
+    )
+    .all(childId ?? null, childId ?? null) as any[];
+  if (!rows.length) return childId != null ? '这个孩子还没有心愿单记录。' : '（家里还没有心愿单记录）';
+  return `心愿单（共 ${rows.length} 条，最多显示 50）：\n${rows
+    .map(
+      (w) =>
+        `- [#${w.id}]「${w.name}」${w.child} 状态:${WISH_STATUS_CN[w.status] ?? w.status}` +
+        `${w.days_required ? ` 需完成 ${w.days_required} 天` : ''}`
+    )
+    .join('\n')}`;
+}
+
 /* ── 日程 / 特殊日 / 账号 / 成长 / 日记 / 历史（只读） ─────────────────── */
 
 const AI_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -1088,7 +1286,7 @@ function growthText(childId?: unknown, childName?: unknown, limit?: unknown): st
   const db = getDb();
   const max = Math.min(Math.max(Number(limit) || 20, 1), 100);
   const fmt = (r: any) =>
-    `- ${r.record_date} 身高 ${r.height_cm ?? '—'}cm 体重 ${r.weight_kg ?? '—'}kg` +
+    `- [#${r.id}] ${r.record_date} 身高 ${r.height_cm ?? '—'}cm 体重 ${r.weight_kg ?? '—'}kg` +
     `${r.grow_cm != null ? `（较上次 ${r.grow_cm > 0 ? '+' : ''}${r.grow_cm}cm）` : ''}` +
     `${r.awarded ? ` 积分 ${r.awarded > 0 ? '+' : ''}${r.awarded}` : ''}${r.note ? ` 备注：${r.note}` : ''}`;
 
@@ -1169,7 +1367,7 @@ function diariesText(childId?: unknown, from?: unknown, to?: unknown, keyword?: 
       }
     })();
     lines.push(
-      `- ${d.diary_date} ${d.child_name}${d.title ? `《${d.title}》` : ''}：${text.slice(0, 80) || '（无正文）'}${media ? `（${media} 个附件）` : ''}`
+      `- [#${d.id}] ${d.diary_date} ${d.child_name}${d.title ? `《${d.title}》` : ''}：${text.slice(0, 80) || '（无正文）'}${media ? `（${media} 个附件）` : ''}`
     );
   }
   return lines.join('\n');
@@ -1300,6 +1498,8 @@ function execSkillFlow(payload: any, actor: ActorInfo): ExecResult {
       taskId: String(payload.taskId ?? 'flow'),
       actor,
       bypassJudge: true,
+      // 流程里的价格是家长预先写在 flow.yaml 里的，视为明确给过
+      lastUserText: step.argsJson,
     });
     if (outcome.kind !== 'result') continue;
     if (/失败|错误|不能|找不到|为空/.test(outcome.text)) {
@@ -2040,6 +2240,214 @@ function execAddGrowthRecords(payload: any, userId: number): ExecResult {
   };
 }
 
+/* ── 背包赠送（家长确认后调用） ────────────────────────────────────────── */
+
+type GiftTarget = {
+  childId: number;
+  childName: string;
+  productId: number;
+  productName: string;
+  quantity: number;
+  reason: string;
+};
+
+/** 解析赠送目标：孩子 + 商品（按 id 或名字匹配）+ 数量 + 理由 */
+function resolveGiftTarget(payload: any): { ok: true; target: GiftTarget } | { ok: false; error: string } {
+  const child = assertChildId(
+    Number(payload.childId) || undefined,
+    payload.childName ? String(payload.childName) : undefined
+  );
+  const db = getDb();
+  let productId = Number(payload.productId) || 0;
+  let productName = '';
+  if (!productId) {
+    const keyword = String(payload.productName ?? '').trim();
+    if (!keyword) return { ok: false, error: '需要提供 productId 或 productName' };
+    const rows = db
+      .prepare("SELECT id, name FROM products WHERE status = 'active' AND name LIKE ? ORDER BY id LIMIT 10")
+      .all(`%${keyword}%`) as any[];
+    if (!rows.length) {
+      return { ok: false, error: `商城里没有找到「${keyword}」，请先确认商品名，或让家长选择上架商品 / 加入心愿单` };
+    }
+    if (rows.length > 1) {
+      return {
+        ok: false,
+        error: `找到多个商品：${rows.map((r) => `#${r.id} ${r.name}`).join('、')}，请指定 productId`,
+      };
+    }
+    productId = rows[0].id;
+    productName = rows[0].name;
+  } else {
+    const row = db.prepare('SELECT name FROM products WHERE id = ?').get(productId) as any;
+    if (!row) return { ok: false, error: `商品 #${productId} 不存在` };
+    productName = row.name;
+  }
+  const quantity = Math.min(Math.max(Number(payload.quantity) || 1, 1), 20);
+  const reason = String(payload.reason ?? '').trim().slice(0, 200);
+  if (!reason) return { ok: false, error: 'reason 不能为空' };
+  return { ok: true, target: { childId: child.id, childName: child.name, productId, productName, quantity, reason } };
+}
+
+function execGiftBackpackItem(payload: any, userId: number): ExecResult {
+  const resolved = resolveGiftTarget(payload);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+  const t = resolved.target;
+  const r = giftBackpackItem({
+    childId: t.childId,
+    productId: t.productId,
+    quantity: t.quantity,
+    reason: t.reason,
+    createdBy: userId,
+  });
+  if (!r.ok) {
+    const msg =
+      r.error === 'product_not_found'
+        ? '商品不存在或已下架'
+        : r.error === 'child_not_found'
+          ? '孩子账号不存在'
+          : '带规格的商品暂不支持直接赠送，请先通过商城兑换';
+    return { ok: false, error: msg };
+  }
+  return { ok: true, detail: `已把「${r.productName}」×${t.quantity} 放进 ${t.childName} 的背包（理由：${t.reason}）` };
+}
+
+/* ── 删除类执行（家长确认后调用） ──────────────────────────────────────── */
+
+function normalizeIdList(value: unknown, max: number): number[] {
+  const raw = Array.isArray(value) ? value : [];
+  const ids = raw.map((x) => Number(x)).filter((n) => Number.isInteger(n) && n > 0);
+  return [...new Set(ids)].slice(0, max);
+}
+
+function execDeleteGrowthRecords(payload: any): ExecResult {
+  const ids = normalizeIdList(payload.recordIds, 100);
+  if (!ids.length) return { ok: false, error: 'recordIds 不能为空' };
+  const db = getDb();
+  const lines: string[] = [];
+  let refundedTotal = 0;
+  for (const id of ids) {
+    const row = db
+      .prepare('SELECT record_date, height_cm, weight_kg FROM growth_records WHERE id = ?')
+      .get(id) as any;
+    if (!row) {
+      lines.push(`#${id} 不存在，已跳过`);
+      continue;
+    }
+    const r = deleteGrowthRecord(id);
+    if (!r.ok) {
+      lines.push(`#${id} 删除失败`);
+      continue;
+    }
+    refundedTotal += r.refunded;
+    lines.push(
+      `#${id} ${row.record_date} 身高 ${row.height_cm ?? '—'}cm 体重 ${row.weight_kg ?? '—'}kg` +
+        `${r.refunded ? `（回退 ${r.refunded} 分）` : ''}`
+    );
+  }
+  return { ok: true, detail: `已删除成长记录：\n${lines.join('\n')}\n共回退积分 ${refundedTotal}` };
+}
+
+function execDeleteDiaries(payload: any): ExecResult {
+  const ids = normalizeIdList(payload.diaryIds, 50);
+  if (!ids.length) return { ok: false, error: 'diaryIds 不能为空' };
+  const db = getDb();
+  const lines: string[] = [];
+  let done = 0;
+  for (const id of ids) {
+    const row = db.prepare('SELECT diary_date, title FROM growth_diaries WHERE id = ?').get(id) as any;
+    if (!row) {
+      lines.push(`#${id} 不存在，已跳过`);
+      continue;
+    }
+    if (!deleteDiaryRecord(id)) {
+      lines.push(`#${id} 删除失败`);
+      continue;
+    }
+    done += 1;
+    lines.push(`#${id} ${row.diary_date}${row.title ? `《${row.title}》` : ''}`);
+  }
+  return { ok: true, detail: `已删除 ${done} 篇成长日记：\n${lines.join('\n')}` };
+}
+
+function execManageRecurringTask(payload: any): ExecResult {
+  const action = String(payload.action ?? '');
+  if (action === 'delete') {
+    const id = Number(payload.taskId);
+    if (!deleteRecurringTask(id)) return { ok: false, error: `周期任务 #${id} 不存在` };
+    return { ok: true, detail: `已删除周期任务 #${id}（连同领取记录）` };
+  }
+  if (action === 'clear_claims') {
+    const id = Number(payload.taskId);
+    const name = clearRecurringTaskClaims(id);
+    if (name === null) return { ok: false, error: `周期任务 #${id} 不存在` };
+    return { ok: true, detail: `已清空周期任务「${name}」的全部领取/完成记录` };
+  }
+  if (action === 'delete_claim') {
+    const claimId = Number(payload.claimId);
+    const claim = deleteRecurringClaim(claimId);
+    if (!claim) return { ok: false, error: `领取记录 #${claimId} 不存在` };
+    const task = getDb().prepare('SELECT name FROM recurring_tasks WHERE id = ?').get(claim.task_id) as any;
+    return { ok: true, detail: `已删除周期任务「${task?.name ?? claim.task_id}」的领取记录 #${claimId}` };
+  }
+  return { ok: false, error: 'action 只能是 delete / clear_claims / delete_claim' };
+}
+
+function execDeleteWishItem(payload: any): ExecResult {
+  const id = Number(payload.wishItemId);
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: 'wishItemId 不合法' };
+  const row = getDb().prepare('SELECT name, status FROM wish_items WHERE id = ?').get(id) as any;
+  if (!row) return { ok: false, error: `心愿 #${id} 不存在` };
+  getDb().prepare('DELETE FROM wish_items WHERE id = ?').run(id);
+  return {
+    ok: true,
+    detail: `已删除心愿「${row.name || '（未命名心愿）'}」（状态 ${WISH_STATUS_CN[row.status] ?? row.status}）`,
+  };
+}
+
+function execDeleteChild(payload: any): ExecResult {
+  const id = Number(payload.childId);
+  const name = String(payload.childName ?? '').trim();
+  const row = getDb().prepare("SELECT name FROM users WHERE id = ? AND role = 'child'").get(id) as any;
+  if (!row) return { ok: false, error: `孩子 #${id} 不存在` };
+  if (!name || name !== row.name) {
+    return { ok: false, error: `孩子名字不匹配（系统里是「${row.name}」），请确认后再删` };
+  }
+  if (!deleteChildAccount(id)) return { ok: false, error: '删除失败' };
+  return { ok: true, detail: `已删除孩子账号「${row.name}」及其全部关联数据` };
+}
+
+function isPrimaryParentUser(userId: number): boolean {
+  const row = getDb()
+    .prepare("SELECT is_primary FROM users WHERE id = ? AND role = 'parent'")
+    .get(userId) as { is_primary: number } | undefined;
+  return Boolean(row?.is_primary);
+}
+
+function execDeleteSkill(payload: any): ExecResult {
+  const folder = String(payload.folder ?? '').trim();
+  if (!folder) return { ok: false, error: 'folder 不能为空' };
+  const skill = listSkills().skills.find((s) => s.folder === folder);
+  if (!skill) return { ok: false, error: `找不到技能「${folder}」` };
+  if (skill.builtin) return { ok: false, error: `「${skill.name}」是内置技能，不能删除` };
+  const r = deleteSkillFolder(folder);
+  return r.ok
+    ? { ok: true, detail: `已删除技能「${skill.name}」（${folder}）` }
+    : { ok: false, error: r.error ?? '删除失败' };
+}
+
+function execDeleteMemory(payload: any): ExecResult {
+  let permalink = String(payload.permalink ?? '').trim();
+  const title = String(payload.title ?? '').trim();
+  if (!permalink && title) {
+    const hit = listMemoryNotes().find((n) => n.title === title || n.permalink === title);
+    if (!hit) return { ok: false, error: `找不到标题为「${title}」的记忆笔记` };
+    permalink = hit.permalink;
+  }
+  if (!permalink) return { ok: false, error: '需要提供 permalink 或 title' };
+  if (!deleteMemoryNote(permalink)) return { ok: false, error: `找不到记忆笔记「${permalink}」` };
+  return { ok: true, detail: `已删除记忆笔记「${title || permalink}」` };
+}
+
 function execManageProductCategory(payload: any): ExecResult {
   const db = getDb();
   const action = String(payload.action ?? '');
@@ -2124,13 +2532,14 @@ function writeGate(
   actionKey: string,
   kind: string,
   payload: unknown,
-  summary: string
+  summary: string,
+  risk: 'normal' | 'high' = 'normal'
 ): { kind: 'result'; text: string } | { kind: 'confirm'; token: string; summary: string; detail: string } | null {
   if (ctx.bypassJudge) return null;
   const verdict = judge({
     taskId: ctx.taskId,
     ownerUserId: ctx.userId,
-    risk: 'normal',
+    risk,
     actionKey,
     kind,
     payload,
@@ -2142,6 +2551,36 @@ function writeGate(
   if (verdict.verdict === 'ask') return { kind: 'confirm', token: verdict.token, summary: verdict.summary, detail: verdict.detail };
   return null;
 }
+
+/** 技能流程里会改数据的工具：只读流程不弹确认，含这些工具才弹 */
+export const WRITE_TOOL_NAMES = new Set([
+  'add_point_records',
+  'create_tasks',
+  'manage_adhoc_task',
+  'review_task_completion',
+  'manage_point_item',
+  'manage_product',
+  'manage_product_category',
+  'set_cash_rate',
+  'handle_exchange',
+  'create_child',
+  'create_parent',
+  'delete_child',
+  'create_calendar_event',
+  'manage_calendar_event',
+  'manage_special_day',
+  'add_growth_record',
+  'add_growth_records',
+  'delete_growth_record',
+  'delete_diary',
+  'manage_recurring_task',
+  'delete_wish_item',
+  'gift_backpack_item',
+  'memory_save',
+  'create_skill',
+  'delete_skill',
+  'delete_memory',
+]);
 
 /* ── 执行入口 ──────────────────────────────────────────────────────────── */
 
@@ -2188,6 +2627,9 @@ case 'get_backpack':
       case 'list_shop':
         return auditRead(shopText(args.keyword));
 
+      case 'list_wish_items':
+        return auditRead(wishItemsText(args.childId != null ? Number(args.childId) : undefined));
+
       case 'list_pending_reviews':
         return auditRead(pendingReviewsText());
 
@@ -2230,11 +2672,28 @@ case 'get_backpack':
           String(o.category ?? '事实').slice(0, 20),
           String(o.text ?? '').slice(0, 300),
         ]) as [string, string][];
+        const summary = `AI 写入记忆笔记「${title}」（${observations.length} 条观察）`;
+        const tags = Array.isArray(args.tags) ? args.tags.map((x: unknown) => String(x)).slice(0, 8) : [];
+        const relations = Array.isArray(args.relations) ? args.relations.map((x: unknown) => String(x)).slice(0, 8) : [];
+        const verdict = ctx.bypassJudge ? ({ verdict: 'allow' } as SentinelVerdict) : judge({
+          taskId: ctx.taskId,
+          ownerUserId: ctx.userId,
+          actionKey: 'memory_save',
+          kind: 'memory_save',
+          payload: { title, tags, observations, relations },
+          summary,
+          moduleName,
+          actor: ctx.actor,
+        });
+        if (verdict.verdict === 'deny') return { kind: 'result', text: verdict.reason };
+        if (verdict.verdict === 'ask') {
+          return { kind: 'confirm', token: verdict.token, summary: verdict.summary, detail: verdict.detail };
+        }
         const r = saveMemoryNote({
           title,
-          tags: Array.isArray(args.tags) ? args.tags.map((x: unknown) => String(x)).slice(0, 8) : [],
+          tags,
           observations,
-          relations: Array.isArray(args.relations) ? args.relations.map((x: unknown) => String(x)).slice(0, 8) : [],
+          relations,
         });
         auditExec(ctx.actor, moduleName, r.merged ? '更新记忆' : '新建记忆', `【${title}】+${observations.length} 条观察`);
         return { kind: 'result', text: `已${r.merged ? '更新' : '写入'}记忆笔记「${title}」（${observations.length} 条观察记录）。` };
@@ -2368,7 +2827,7 @@ case 'get_backpack':
           itemName = item.name;
         }
         const verb = action === 'create' ? '新增' : action === 'delete' ? '删除' : action === 'toggle' ? '启停' : '修改';
-        const gate = writeGate(ctx, moduleName, `point_item:${args.itemId ?? itemName}:${action}`, 'manage_point_item', args, `AI ${verb}积分项「${itemName}」`);
+        const gate = writeGate(ctx, moduleName, `point_item:${args.itemId ?? itemName}:${action}`, 'manage_point_item', args, `AI ${verb}积分项「${itemName}」`, 'high');
         if (gate) return gate;
         const exec = execManagePointItem(args);
         return exec.ok ? { kind: 'result', text: `已执行：${exec.detail}` } : { kind: 'result', text: exec.error };
@@ -2378,13 +2837,35 @@ case 'get_backpack':
         const action = String(args.action ?? '');
         if (!['create', 'update', 'delete', 'toggle'].includes(action)) return { kind: 'result', text: 'action 只能是 create / update / delete / toggle' };
         let productName = String(args.name ?? '');
+        if (action === 'create') {
+          // 新建商品必须由家长给出名称和积分，工具层直接拦住模型自己编默认值
+          if (!productName.trim()) return { kind: 'result', text: '缺少商品名：先用 ask_user 问家长商品叫什么，不要自己起名' };
+          const cost = Number(args.cost);
+          if (!Number.isFinite(cost) || cost <= 0) {
+            return { kind: 'result', text: '缺少有效积分：先用 ask_user 问家长这个商品标多少积分（至少 1 分），不要自己定' };
+          }
+          // 价格必须来自家长这句原话或刚回答的 ask_user；防止模型自己填 1 分，
+          // 否则上架后孩子可能用 1 积分就把礼物兑换走。
+          const saidPrice =
+            (ctx.askedThisTurn && numberInText(ctx.askAnswers ?? '', cost)) ||
+            (numberInText(ctx.lastUserText ?? '', cost) &&
+              /(分|积分|元|块|标价|定价|价格|售价|cost)/.test(ctx.lastUserText ?? ''));
+          if (!saidPrice) {
+            return {
+              kind: 'result',
+              text:
+                '新建商品的价格必须由家长明确给出，不要自己填默认值（尤其不要默认 1 分）。' +
+                '请先用 ask_user 说明「背包里的东西需要先在商城上架」，并问家长这个商品标多少积分；拿到答复后再创建。',
+            };
+          }
+        }
         if (action !== 'create') {
           const p = getDb().prepare('SELECT name FROM products WHERE id = ?').get(Number(args.productId)) as any;
           if (!p) return { kind: 'result', text: '商品不存在' };
           productName = p.name;
         }
         const verb = action === 'create' ? '新增' : action === 'delete' ? '删除' : action === 'toggle' ? '上下架' : '修改';
-        const gate = writeGate(ctx, moduleName, `product:${args.productId ?? productName}:${action}`, 'manage_product', args, `AI ${verb}商品「${productName}」`);
+        const gate = writeGate(ctx, moduleName, `product:${args.productId ?? productName}:${action}`, 'manage_product', args, `AI ${verb}商品「${productName}」`, 'high');
         if (gate) return gate;
         const exec = execManageProduct(args);
         return exec.ok ? { kind: 'result', text: `已执行：${exec.detail}` } : { kind: 'result', text: exec.error };
@@ -2530,7 +3011,7 @@ case 'get_backpack':
 
       case 'set_cash_rate': {
         const summary = `AI 设置现金兑换比例：${args.rate} 积分 = 1 元`;
-        const gate = writeGate(ctx, moduleName, 'shop:cash_rate', 'set_cash_rate', args, summary);
+        const gate = writeGate(ctx, moduleName, 'shop:cash_rate', 'set_cash_rate', args, summary, 'high');
         if (gate) return gate;
         const exec = execSetCashRate(args);
         return exec.ok ? { kind: 'result', text: `已执行：${exec.detail}` } : { kind: 'result', text: exec.error };
@@ -2569,7 +3050,8 @@ case 'get_backpack':
         }
         const steps = skill.flow.steps.map((s) => ({ tool: s.tool, argsJson: JSON.stringify(s.args ?? {}) }));
         const summary = `AI 执行技能流程「${skill.name}」（${steps.length} 步：${steps.map((s) => s.tool).join(' → ')}）${args.input ? `，目标：${args.input}` : ''}`;
-        const verdict = ctx.bypassJudge ? ({ verdict: 'allow' } as SentinelVerdict) : judge({
+        const hasWriteStep = steps.some((s) => WRITE_TOOL_NAMES.has(s.tool));
+        const verdict = !hasWriteStep || ctx.bypassJudge ? ({ verdict: 'allow' } as SentinelVerdict) : judge({
           taskId: ctx.taskId,
           ownerUserId: ctx.userId,
           actionKey: `flow:${skill.folder}`,
@@ -2586,6 +3068,167 @@ case 'get_backpack':
         // 策略放行：逐步执行（流程内写步骤已整体放行）
         const exec: ExecResult = execSkillFlow({ flowName: skill.name, folder: skill.folder, steps, startIndex: 0, taskId: ctx.taskId }, ctx.actor);
         return exec.ok ? { kind: 'result', text: exec.detail } : { kind: 'result', text: exec.error };
+      }
+
+      case 'delete_growth_record': {
+        const ids = normalizeIdList(args.recordIds, 100);
+        if (!ids.length) return { kind: 'result', text: 'recordIds 不能为空' };
+        const placeholders = ids.map(() => '?').join(',');
+        const rows = getDb()
+          .prepare(
+            `SELECT id, record_date, height_cm, weight_kg, awarded FROM growth_records WHERE id IN (${placeholders})`
+          )
+          .all(...ids) as any[];
+        if (!rows.length) return { kind: 'result', text: '找不到这些成长记录，请先用 list_growth_records 查 id' };
+        const refund = rows.reduce((sum, r) => sum + (Number(r.awarded) || 0), 0);
+        const summary =
+          `AI 删除 ${rows.length} 条成长记录：` +
+          rows.map((r) => `#${r.id} ${r.record_date} ${r.height_cm ?? '—'}cm`).join('、') +
+          (refund ? `（回退 ${refund} 分）` : '');
+        const gate = writeGate(ctx, moduleName, `growth:delete:${ids.join(',')}`, 'delete_growth_record', { recordIds: ids }, summary);
+        if (gate) return gate;
+        const exec = execDeleteGrowthRecords({ recordIds: ids });
+        return exec.ok ? { kind: 'result', text: `已执行：${exec.detail}` } : { kind: 'result', text: exec.error };
+      }
+
+      case 'delete_diary': {
+        const ids = normalizeIdList(args.diaryIds, 50);
+        if (!ids.length) return { kind: 'result', text: 'diaryIds 不能为空' };
+        const placeholders = ids.map(() => '?').join(',');
+        const rows = getDb()
+          .prepare(`SELECT id, diary_date, title FROM growth_diaries WHERE id IN (${placeholders})`)
+          .all(...ids) as any[];
+        if (!rows.length) return { kind: 'result', text: '找不到这些日记，请先用 list_diaries 查 id' };
+        const summary = `AI 删除 ${rows.length} 篇成长日记：${rows
+          .map((d) => `#${d.id} ${d.diary_date}${d.title ? `《${d.title}》` : ''}`)
+          .join('、')}`;
+        const gate = writeGate(ctx, moduleName, `diary:delete:${ids.join(',')}`, 'delete_diary', { diaryIds: ids }, summary);
+        if (gate) return gate;
+        const exec = execDeleteDiaries({ diaryIds: ids });
+        return exec.ok ? { kind: 'result', text: `已执行：${exec.detail}` } : { kind: 'result', text: exec.error };
+      }
+
+      case 'manage_recurring_task': {
+        const action = String(args.action ?? '');
+        if (!['delete', 'clear_claims', 'delete_claim'].includes(action)) {
+          return { kind: 'result', text: 'action 只能是 delete / clear_claims / delete_claim' };
+        }
+        const db = getDb();
+        let summary = '';
+        if (action === 'delete_claim') {
+          const claim = db
+            .prepare('SELECT id, task_id, user_id, period_key FROM recurring_claims WHERE id = ?')
+            .get(Number(args.claimId)) as any;
+          if (!claim) return { kind: 'result', text: `领取记录 #${args.claimId} 不存在` };
+          const task = db.prepare('SELECT name FROM recurring_tasks WHERE id = ?').get(claim.task_id) as any;
+          const child = db.prepare('SELECT name FROM users WHERE id = ?').get(claim.user_id) as any;
+          summary = `AI 删除周期任务「${task?.name ?? claim.task_id}」的领取记录 #${claim.id}（${child?.name ?? claim.user_id} 期次 ${claim.period_key}）`;
+        } else {
+          const task = db.prepare('SELECT id, name FROM recurring_tasks WHERE id = ?').get(Number(args.taskId)) as any;
+          if (!task) return { kind: 'result', text: `周期任务 #${args.taskId} 不存在` };
+          summary =
+            action === 'delete'
+              ? `AI 删除周期任务「${task.name}」及其全部领取记录`
+              : `AI 清空周期任务「${task.name}」的全部领取/完成记录`;
+        }
+        const gate = writeGate(
+          ctx,
+          moduleName,
+          `recurring:${args.taskId ?? args.claimId}:${action}`,
+          'recurring_task',
+          { action, taskId: args.taskId, claimId: args.claimId },
+          summary
+        );
+        if (gate) return gate;
+        const exec = execManageRecurringTask({ action, taskId: args.taskId, claimId: args.claimId });
+        return exec.ok ? { kind: 'result', text: `已执行：${exec.detail}` } : { kind: 'result', text: exec.error };
+      }
+
+      case 'delete_wish_item': {
+        const row = getDb()
+          .prepare('SELECT id, name, status, child_id FROM wish_items WHERE id = ?')
+          .get(Number(args.wishItemId)) as any;
+        if (!row) return { kind: 'result', text: `心愿 #${args.wishItemId} 不存在，请先用 list_wish_items 查 id` };
+        const gate = writeGate(
+          ctx,
+          moduleName,
+          `wish:${row.id}`,
+          'delete_wish_item',
+          { wishItemId: row.id },
+          `AI 删除心愿 #${row.id}「${row.name || '（未命名心愿）'}」（状态 ${WISH_STATUS_CN[row.status] ?? row.status}）`
+        );
+        if (gate) return gate;
+        const exec = execDeleteWishItem({ wishItemId: row.id });
+        return exec.ok ? { kind: 'result', text: `已执行：${exec.detail}` } : { kind: 'result', text: exec.error };
+      }
+
+      case 'delete_child': {
+        const child = assertChildId(
+          args.childId != null ? Number(args.childId) : undefined,
+          args.childName != null ? String(args.childName) : undefined
+        );
+        const gate = writeGate(
+          ctx,
+          moduleName,
+          `account:child:delete:${child.id}`,
+          'delete_child',
+          { childId: child.id, childName: child.name },
+          `AI 删除孩子账号「${child.name}」及其全部关联数据（任务、积分流水、成长记录等，不可恢复）`,
+          'high'
+        );
+        if (gate) return gate;
+        const exec = execDeleteChild({ childId: child.id, childName: child.name });
+        return exec.ok ? { kind: 'result', text: `已执行：${exec.detail}` } : { kind: 'result', text: exec.error };
+      }
+
+      case 'delete_skill': {
+        if (!isPrimaryParentUser(ctx.userId)) return { kind: 'result', text: '只有主家长可以删除技能' };
+        const folder = String(args.folder ?? '').trim();
+        const skill = listSkills().skills.find((s) => s.folder === folder);
+        if (!skill) return { kind: 'result', text: `找不到技能「${folder}」` };
+        if (skill.builtin) return { kind: 'result', text: `「${skill.name}」是内置技能，不能删除` };
+        const gate = writeGate(ctx, moduleName, `skill:delete:${folder}`, 'delete_skill', { folder }, `AI 删除技能「${skill.name}」（${folder}）`);
+        if (gate) return gate;
+        const exec = execDeleteSkill({ folder });
+        return exec.ok ? { kind: 'result', text: `已执行：${exec.detail}` } : { kind: 'result', text: exec.error };
+      }
+
+      case 'delete_memory': {
+        if (!isPrimaryParentUser(ctx.userId)) return { kind: 'result', text: '只有主家长可以删除记忆' };
+        const label = String(args.permalink ?? args.title ?? '').trim();
+        if (!label) return { kind: 'result', text: '需要提供 permalink 或 title' };
+        const gate = writeGate(
+          ctx,
+          moduleName,
+          `memory:delete:${label}`,
+          'delete_memory',
+          { permalink: args.permalink, title: args.title },
+          `AI 删除记忆笔记「${label}」`
+        );
+        if (gate) return gate;
+        const exec = execDeleteMemory({ permalink: args.permalink, title: args.title });
+        return exec.ok ? { kind: 'result', text: `已执行：${exec.detail}` } : { kind: 'result', text: exec.error };
+      }
+
+      case 'gift_backpack_item': {
+        const resolved = resolveGiftTarget(args);
+        if (!resolved.ok) return { kind: 'result', text: resolved.error };
+        const t = resolved.target;
+        const gate = writeGate(
+          ctx,
+          moduleName,
+          `backpack:gift:${t.childId}:${t.productId}:${t.quantity}`,
+          'gift_backpack_item',
+          { childId: t.childId, productId: t.productId, quantity: t.quantity, reason: t.reason },
+          `AI 赠送「${t.productName}」×${t.quantity} 到 ${t.childName} 的背包（理由：${t.reason}）`,
+          'high'
+        );
+        if (gate) return gate;
+        const exec = execGiftBackpackItem(
+          { childId: t.childId, productId: t.productId, quantity: t.quantity, reason: t.reason },
+          ctx.userId
+        );
+        return exec.ok ? { kind: 'result', text: `已执行：${exec.detail}` } : { kind: 'result', text: exec.error };
       }
 
       default:
@@ -2637,6 +3280,21 @@ const actorInfo = { ...actor };
       case 'skill_create':
         exec = execSkillCreate(action.payload);
         break;
+      case 'memory_save': {
+        const p = action.payload as any;
+        try {
+          const r = saveMemoryNote({
+            title: String(p.title ?? ''),
+            tags: Array.isArray(p.tags) ? p.tags : [],
+            observations: Array.isArray(p.observations) ? p.observations : [],
+            relations: Array.isArray(p.relations) ? p.relations : [],
+          });
+          exec = { ok: true, detail: `${r.merged ? '已更新' : '已写入'}记忆笔记「${p.title}」（${(p.observations ?? []).length} 条观察记录）` };
+        } catch (e) {
+          exec = { ok: false, error: (e as Error).message || '写入记忆失败' };
+        }
+        break;
+      }
       case 'skill_flow':
         exec = execSkillFlow({ ...(action.payload as any), taskId: 'confirmed' }, actorInfo);
         break;
@@ -2672,6 +3330,30 @@ const actorInfo = { ...actor };
         break;
       case 'add_growth_records':
         exec = execAddGrowthRecords(action.payload, userId);
+        break;
+      case 'delete_growth_record':
+        exec = execDeleteGrowthRecords(action.payload);
+        break;
+      case 'delete_diary':
+        exec = execDeleteDiaries(action.payload);
+        break;
+      case 'recurring_task':
+        exec = execManageRecurringTask(action.payload);
+        break;
+      case 'delete_wish_item':
+        exec = execDeleteWishItem(action.payload);
+        break;
+      case 'delete_child':
+        exec = execDeleteChild(action.payload);
+        break;
+      case 'delete_skill':
+        exec = execDeleteSkill(action.payload);
+        break;
+      case 'delete_memory':
+        exec = execDeleteMemory(action.payload);
+        break;
+      case 'gift_backpack_item':
+        exec = execGiftBackpackItem(action.payload, userId);
         break;
       case 'product_category':
         exec = execManageProductCategory(action.payload);

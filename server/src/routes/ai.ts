@@ -20,7 +20,7 @@ import { probeModel, listModels } from '../services/ai/llm.js';
 import { resolveProviderIcon } from '../services/ai/icons.js';
 import { answerQuestion, cancelSessionQuestions, listQuestions } from '../services/ai/questions.js';
 import { listTurns } from '../services/ai/turnState.js';
-import { getSafetyPolicy, setSafetyPolicy, isSafetyPolicy } from '../services/ai/sentinel.js';
+import { getSafetyPolicy, setSafetyPolicy, isSafetyPolicy, listPendingForOwner } from '../services/ai/sentinel.js';
 import { parseMcpServersWithEnv, listMcpTools, invalidateMcp } from '../services/ai/mcp.js';
 import { listSkills, setSkillEnabled, deleteSkillFolder } from '../services/ai/skills.js';
 import {
@@ -404,6 +404,17 @@ export function registerAiRoutes(app: FastifyInstance): void {
       return { ...q, sessionTitle: row?.title ?? '' };
     });
     return { questions: rows };
+  });
+
+  /** 当前待确认的写操作：刷新/切页/WS 掉线后据此补弹确认面板 */
+  app.get('/ai/pending-confirms', { preHandler: requireParent }, async (req) => {
+    return {
+      confirms: listPendingForOwner(req.user!.sub).map((p) => ({
+        token: p.token,
+        summary: p.summary,
+        detail: p.summary,
+      })),
+    };
   });
 
   /** 回答 Ask Question 面板：answers 为空 = 跳过 */

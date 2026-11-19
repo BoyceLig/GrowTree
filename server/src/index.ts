@@ -32,6 +32,7 @@ import { registerWhisperRoutes } from './routes/whispers.js';
 import { registerUploadRoutes, sweepOrphanUploads } from './routes/upload.js';
 import { registerUpdateRoutes } from './routes/update.js';
 import { registerAboutRoutes } from './routes/about.js';
+import { registerAiRoutes } from './routes/ai.js';
 import { registerHealthRoutes } from './routes/health.js';
 
 /**
@@ -122,6 +123,7 @@ async function main() {
     registerUploadRoutes(api);
     registerUpdateRoutes(api);
     registerAboutRoutes(api);
+    registerAiRoutes(api);
     ext?.routes?.(api);
   }, { prefix: '/api' });
 

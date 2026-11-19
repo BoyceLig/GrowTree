@@ -300,6 +300,16 @@ export function useWsStore() {
     if (msg.type === 'wish_requests_changed') {
       window.dispatchEvent(new CustomEvent('ws:wish_requests_changed', { detail: msg }));
     }
+    // ── AI 助手：ai_chat_* 全家桶（delta/tool/confirm/done/error/warning）只派发事件，
+    //    提示与气泡渲染由聊天页自己处理 —— 别处不需要打扰。 ──
+    if (msg.type === 'ai_chat_question' && auth.user?.role === 'parent') {
+      // 路由是 hash 模式：location.pathname 永远是站点根，真实页面在 #/parent/ai
+      const onAiPage = `${location.pathname}${location.hash}`.includes('/parent/ai');
+      if (!onAiPage) toast.info('💬 AI 在等你回答一个问题，回到「满伴助手」继续');
+    }
+    if (typeof msg.type === 'string' && msg.type.startsWith('ai_chat_')) {
+      window.dispatchEvent(new CustomEvent('ws:' + msg.type, { detail: msg }));
+    }
   }
 
   return {

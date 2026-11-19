@@ -8,6 +8,7 @@ import ZodiacAvatar from '@/components/ZodiacAvatar.vue';
 import NavIcon, { type NavIconName } from '@/components/NavIcon.vue';
 import AccountManagerModal from '@/components/AccountManagerModal.vue';
 import AboutModal from '@/components/AboutModal.vue';
+import AiSettingsModal from '@/components/AiSettingsModal.vue';
 import UpdateBanner from '@/components/UpdateBanner.vue';
 import { ensureCategories } from '@/composables/useCategories';
 
@@ -25,11 +26,14 @@ const navItems: { to: string; label: string; icon: NavIconName }[] = [
   { to: '/parent/points', label: '积分', icon: 'points' },
   { to: '/parent/growth', label: '成长', icon: 'growth' },
   { to: '/parent/shop', label: '商城', icon: 'shop' },
+  { to: '/parent/ai', label: 'AI', icon: 'ai' },
 ];
 
 const menuOpen = ref(false);
 const accountsOpen = ref(false);
 const aboutOpen = ref(false);
+// AI 设置弹窗：头像菜单入口，仅主家长可见（AI 接口/MCP/技能配置）
+const aiSettingsOpen = ref(false);
 
 const identityLabel = computed(() => auth.user?.identity || '家长');
 const roleLabel = computed(() => (auth.user?.isPrimary ? '主账号' : ''));
@@ -141,6 +145,10 @@ onUnmounted(() => {
               <span class="mi-icon">👥</span>
               <span>账号管理</span>
             </button>
+            <button v-if="auth.user?.isPrimary" class="menu-item" @click="closeMenu(); aiSettingsOpen = true">
+              <span class="mi-icon">🤖</span>
+              <span>AI 设置</span>
+            </button>
             <button class="menu-item" @click="openAbout">
               <span class="mi-icon">🌳</span>
               <span>关于满伴</span>
@@ -180,6 +188,7 @@ onUnmounted(() => {
 
     <AccountManagerModal v-model="accountsOpen" />
     <AboutModal v-model="aboutOpen" @check="checkUpdate" />
+    <AiSettingsModal v-model="aiSettingsOpen" />
   </div>
 </template>
 

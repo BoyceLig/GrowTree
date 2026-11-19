@@ -210,6 +210,40 @@ export function recordGrowthRecord(input: GrowthRecordInput): GrowthRecordResult
   return { ok: true, recordId, updated: Boolean(existing), growCm: Number(growCm.toFixed(1)), awarded };
 }
 
+/**
+ * 删除一条成长记录：收回这条记录发出的积分、删掉对应流水、重算后面记录的增减量。
+ * 路由与 AI 工具共用，避免两处逻辑漂移。
+ * 只回滚被删的这一条，不重算后面记录的历史得分（积分按当时规则结算，不追溯）。
+ */
+export function deleteGrowthRecord(
+  id: number
+): { ok: true; refunded: number } | { ok: false; error: 'not_found' } {
+  const db = getDb();
+  const row = db.prepare('SELECT user_id, awarded FROM growth_records WHERE id = ?').get(id) as
+    | { user_id: number; awarded: number | null }
+    | undefined;
+  if (!row) return { ok: false, error: 'not_found' };
+
+  const refunded = row.awarded ?? 0;
+  const remove = db.transaction(() => {
+    if (refunded !== 0) {
+      db.prepare(
+        `DELETE FROM point_logs
+         WHERE user_id = ? AND source = 'adjust' AND ref_id = ? AND note LIKE '测量记录%'`
+      ).run(row.user_id, id);
+      db.prepare('UPDATE users SET total_points = total_points - ? WHERE id = ?').run(
+        refunded,
+        row.user_id
+      );
+    }
+    db.prepare('DELETE FROM growth_records WHERE id = ?').run(id);
+  });
+  remove();
+
+  recomputeGrow(row.user_id);
+  return { ok: true, refunded };
+}
+
 export function registerGrowthRoutes(app: FastifyInstance) {
   // 成长积分规则（家长可读可改）
   app.get('/growth/settings', { preHandler: requireParent }, async () => {
@@ -296,33 +330,10 @@ export function registerGrowthRoutes(app: FastifyInstance) {
 
   // 删除记录（家长）
   // 连带着把这条记录发出去的积分收回、对应的积分流水删掉，不留幽灵分数。
-  // 注意：只回滚被删的这一条，不重算后面记录的历史得分（积分按当时规则结算，不追溯）。
   app.delete('/growth/records/:id', { preHandler: requireParent }, async (req, reply) => {
-    const id = Number((req.params as any).id);
-    const db = getDb();
-    const row = db.prepare('SELECT user_id, awarded FROM growth_records WHERE id = ?').get(id) as
-      | { user_id: number; awarded: number | null }
-      | undefined;
-    if (!row) return reply.code(404).send({ error: 'not_found' });
-
-    const refunded = row.awarded ?? 0;
-    const remove = db.transaction(() => {
-      if (refunded !== 0) {
-        db.prepare(
-          `DELETE FROM point_logs
-           WHERE user_id = ? AND source = 'adjust' AND ref_id = ? AND note LIKE '测量记录%'`
-        ).run(row.user_id, id);
-        db.prepare('UPDATE users SET total_points = total_points - ? WHERE id = ?').run(
-          refunded,
-          row.user_id
-        );
-      }
-      db.prepare('DELETE FROM growth_records WHERE id = ?').run(id);
-    });
-    remove();
-
-    recomputeGrow(row.user_id);
-    return { ok: true, refunded };
+    const result = deleteGrowthRecord(Number((req.params as any).id));
+    if (!result.ok) return reply.code(404).send({ error: 'not_found' });
+    return { ok: true, refunded: result.refunded };
   });
 
   // 查询某个孩子的记录（家长本人，或孩子查自己）

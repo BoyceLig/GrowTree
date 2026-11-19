@@ -26,7 +26,7 @@ const tab = ref<'api' | 'mcp' | 'skills' | 'memory'>('api');
 /* ── MCP ───────────────────────────────────────────────────────────────── */
 
 /** 安全策略（写类/不可逆操作） */
-const safety = ref<'alwaysAsk' | 'onDemand' | 'allowAll'>('onDemand');
+const safety = ref<'alwaysAsk' | 'allowAll'>('alwaysAsk');
 /** 正在保存安全策略：此时别被 loadConfig 的旧响应覆盖 */
 const savingSafety = ref(false);
 
@@ -161,7 +161,7 @@ function toggleServer(name: string): void {
 }
 
 let safetySeq = 0;
-async function saveSafety(mode: 'alwaysAsk' | 'onDemand' | 'allowAll'): Promise<void> {
+async function saveSafety(mode: 'alwaysAsk' | 'allowAll'): Promise<void> {
   const seq = ++safetySeq;
   safety.value = mode;
   savingSafety.value = true;
@@ -169,12 +169,12 @@ async function saveSafety(mode: 'alwaysAsk' | 'onDemand' | 'allowAll'): Promise<
     const data = await api.put<{ safety?: string }>('/ai/config', { safety: mode });
     if (seq !== safetySeq) return;
     // 以服务端实际落库的结果为准：存没存上，界面立刻就能看出来
-    if (data.safety === 'alwaysAsk' || data.safety === 'onDemand' || data.safety === 'allowAll') {
+    if (data.safety === 'alwaysAsk' || data.safety === 'allowAll') {
       safety.value = data.safety;
     }
     const st = await api.get<{ safety?: string }>('/ai/status');
     if (seq !== safetySeq) return;
-    if (st.safety === 'alwaysAsk' || st.safety === 'onDemand' || st.safety === 'allowAll') {
+    if (st.safety === 'alwaysAsk' || st.safety === 'allowAll') {
       safety.value = st.safety;
     }
     if (safety.value !== mode) toast.warning('安全策略没有存下来，请再试一次');
@@ -185,7 +185,7 @@ async function saveSafety(mode: 'alwaysAsk' | 'onDemand' | 'allowAll'): Promise<
     // 保存失败：回到服务端当前值，别让界面显示一个没生效的状态
     try {
       const st = await api.get<{ safety?: string }>('/ai/status');
-      if (seq === safetySeq && (st.safety === 'alwaysAsk' || st.safety === 'onDemand' || st.safety === 'allowAll')) {
+      if (seq === safetySeq && (st.safety === 'alwaysAsk' || st.safety === 'allowAll')) {
         safety.value = st.safety;
       }
     } catch {
@@ -299,9 +299,9 @@ async function confirmRemoveSkill(): Promise<void> {
 
 async function loadConfig(): Promise<void> {
   try {
-    const data = await api.get<{ mcp: Record<string, McpEntry>; safety: 'alwaysAsk' | 'onDemand' | 'allowAll' }>('/ai/config');
+    const data = await api.get<{ mcp: Record<string, McpEntry>; safety: 'alwaysAsk' | 'allowAll' }>('/ai/config');
     mcpServers.value = data.mcp ?? {};
-    if (!savingSafety.value) safety.value = data.safety ?? 'onDemand';
+    if (!savingSafety.value) safety.value = data.safety ?? 'alwaysAsk';
   } catch (err) {
     toast.warning((err as Error).message || '读取 AI 设置失败');
   }
@@ -341,11 +341,11 @@ watch(tab, (t) => {
         <div class="safety-row">
           <span class="safety-label">安全策略（写类/不可逆操作）</span>
           <div class="safety-opts" role="radiogroup" aria-label="安全策略">
-            <button class="mini-opt" :class="{ on: safety === 'allowAll' }" @click="saveSafety('allowAll')">允许</button>
-            <button class="mini-opt" :class="{ on: safety === 'onDemand' }" @click="saveSafety('onDemand')">按需</button>
-            <button class="mini-opt" :class="{ on: safety === 'alwaysAsk' }" @click="saveSafety('alwaysAsk')">询问</button>
+            <button class="mini-opt" :class="{ on: safety === 'alwaysAsk' }" @click="saveSafety('alwaysAsk')">全部询问</button>
+            <button class="mini-opt" :class="{ on: safety === 'allowAll' }" @click="saveSafety('allowAll')">全部允许</button>
+
           </div>
-          <span class="safety-hint">允许=不询问直接执行并全部审计；按需=仅高风险操作（外部 MCP、写技能文件）弹确认卡；询问=每次写操作都弹确认卡（可允许一次/本次任务都允许/拒绝）</span>
+          <span class="safety-hint">全部询问=每次修改数据都弹确认卡（可允许一次/本次任务都允许/拒绝）；全部允许=不再询问直接执行并全部审计。查询类工具与只读技能不询问。</span>
         </div>
 
         <p class="hint">

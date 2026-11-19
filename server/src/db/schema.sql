@@ -511,6 +511,49 @@ CREATE TABLE IF NOT EXISTS special_day_targets (
 );
 
 -- ============================================================================
+-- AI 助手（2026-11-17）：家长端 AI 对话
+--
+-- 会话与消息都挂在家长账号下（user_id = 发起对话的家长），孩子端不出现在 AI 里。
+-- ai_messages.role 三种：user / assistant / tool。
+--   tool 行存的是 agent 工具循环里「工具结果」（meta.tool_call_id 对应上一条
+--   assistant 的 tool_calls），重放历史时按 OpenAI 协议拼回 messages 数组。
+-- attachments / meta 都是 JSON 字符串，读出来 JSON.parse 即可。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS ai_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT '新对话',
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL REFERENCES ai_sessions(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool')),
+  content TEXT NOT NULL DEFAULT '',
+  attachments TEXT,                    -- JSON 数组 [{kind:'image'|'file', url, name, mime, size, extracted?}]
+  meta TEXT,                           -- JSON：assistant 存 tool_calls；tool 存 tool_call_id/tool_name/确认信息
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_session ON ai_messages(session_id, id);
+CREATE INDEX IF NOT EXISTS idx_ai_sessions_user ON ai_sessions(user_id, updated_at DESC);
+
+-- 消息排队（2026-11-18）：回合进行中家长再发的消息先存这里，按 sort_order 依次自动执行；
+-- 「引导」会把某条消息立刻补进当前回合并从队列删除。放数据库里，切页面/刷新都不会丢。
+CREATE TABLE IF NOT EXISTS ai_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL REFERENCES ai_sessions(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL DEFAULT '',
+  attachments TEXT,                    -- JSON 数组，结构同 ai_messages.attachments
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_ai_queue_session ON ai_queue(session_id, sort_order, id);
+
+-- ============================================================================
 -- 上传文件元数据（2026-11-18）
 --
 -- 磁盘上的文件名是随机生成的唯一 ID（`<时间戳base36>-<随机hex>.<扩展名>`），

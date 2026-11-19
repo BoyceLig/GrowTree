@@ -82,6 +82,60 @@ const LIST_SQL = `
     acquired_at DESC, id DESC
 `;
 
+export type GiftBackpackInput = {
+  childId: number;
+  productId: number;
+  quantity: number;
+  reason: string;
+  createdBy: number;
+};
+
+export type GiftBackpackResult =
+  | { ok: true; childId: number; productId: number; productName: string; quantity: number }
+  | { ok: false; error: 'child_not_found' | 'product_not_found' | 'variant_required' };
+
+/**
+ * 家长直接赠送商品到孩子背包：不扣积分、不减库存、不走兑换流程。
+ * 路由与 AI 工具共用这一份逻辑，保证界面和对话里的赠送行为一致。
+ */
+export function giftBackpackItem(input: GiftBackpackInput): GiftBackpackResult {
+  const { childId, productId, quantity, reason, createdBy } = input;
+  const db = getDb();
+  const product = db.prepare('SELECT * FROM products WHERE id = ? AND status = ?')
+    .get(productId, 'active') as any;
+  if (!product) return { ok: false, error: 'product_not_found' };
+  const child = db.prepare('SELECT * FROM users WHERE id = ? AND role = ?')
+    .get(childId, 'child') as any;
+  if (!child) return { ok: false, error: 'child_not_found' };
+  // 有规格的商品必须选规格；赠送时不做规格选择，先拒绝并引导去兑换
+  const variants = db.prepare('SELECT id FROM product_variants WHERE product_id = ?').all(productId) as any[];
+  if (variants.length > 0) return { ok: false, error: 'variant_required' };
+
+  const icon = iconOfProduct(productId);
+  const now = Math.floor(Date.now() / 1000);
+  const ins = db.prepare(`INSERT INTO backpack_items
+    (child_id, product_id, name, icon, description, cost, status, acquired_at, source)
+    VALUES (?, ?, ?, ?, ?, ?, 'unused', ?, 'gift')`);
+  const txn = db.transaction(() => {
+    for (let i = 0; i < quantity; i++) {
+      ins.run(childId, productId, product.name, icon, product.prop_desc ?? '', product.cost, now);
+    }
+  });
+  txn();
+
+  // 推给孩子：{昵称（身份）} 送了你一个 {物品}（×数量），理由：{xxx}，已放入你的背包
+  pushToUser(childId, {
+    type: 'backpack_gifted',
+    parentId: createdBy,
+    parentLabel: parentLabel(createdBy),
+    itemName: product.name,
+    quantity,
+    reason,
+  });
+  pushToAll({ type: 'backpack_changed', childId, productId });
+  return { ok: true, childId, productId, productName: product.name, quantity };
+}
+
 export function registerBackpackRoutes(app: FastifyInstance) {
   // ── 孩子端：查看自己的背包 ─────────────────────────────────────────────
   app.get('/backpack', async (req) => {
@@ -157,54 +211,20 @@ export function registerBackpackRoutes(app: FastifyInstance) {
     const parsed = giftSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_input' });
     const { childId, productId, quantity, reason } = parsed.data;
-    const db = getDb();
-    const product = db.prepare('SELECT * FROM products WHERE id = ? AND status = ?')
-      .get(productId, 'active') as any;
-    if (!product) return reply.code(404).send({ error: 'product_not_found' });
-    const child = db.prepare('SELECT * FROM users WHERE id = ? AND role = ?')
-      .get(childId, 'child') as any;
-    if (!child) return reply.code(404).send({ error: 'child_not_found' });
-    // 有规格的商品必须选规格；赠送时选第一条规格当快照
-    const variants = db.prepare('SELECT * FROM product_variants WHERE product_id = ? ORDER BY sort_order ASC, id ASC')
-      .all(productId) as any[];
-    if (variants.length > 0) {
-      return reply.code(400).send({ error: 'variant_required', detail: '带规格的商品暂不支持直接赠送，请先兑换' });
-    }
-
-    const icon = iconOfProduct(productId);
-    const now = Math.floor(Date.now() / 1000);
-    const ins = db.prepare(`INSERT INTO backpack_items
-      (child_id, product_id, name, icon, description, cost, status, acquired_at, source)
-      VALUES (?, ?, ?, ?, ?, ?, 'unused', ?, 'gift')`);
-    const label = parentLabel(req.user!.sub);
-    const txn = db.transaction(() => {
-      for (let i = 0; i < quantity; i++) {
-        ins.run(childId, productId, product.name, icon, product.prop_desc ?? '', product.cost, now);
-      }
-      logBackpack({
-        childId,
-        action: 'gift',
-        itemName: product.name,
-        icon,
-        quantity,
-        detail: reason,
-        actorRole: 'parent',
-        actorLabel: label,
-      });
-    });
-    txn();
-
-    // 推给孩子：{昵称（身份）} 送了你一个 {物品}（×数量），理由：{xxx}，已放入你的背包
-    pushToUser(childId, {
-      type: 'backpack_gifted',
-      parentId: req.user!.sub,
-      parentLabel: label,
-      itemName: product.name,
+    const result = giftBackpackItem({
+      childId,
+      productId,
       quantity,
       reason,
+      createdBy: req.user!.sub,
     });
-    pushToAll({ type: 'backpack_changed', childId, productId });
-    return { ok: true, childId, productId, quantity };
+    if (!result.ok) {
+      if (result.error === 'variant_required') {
+        return reply.code(400).send({ error: result.error, detail: '带规格的商品暂不支持直接赠送，请先兑换' });
+      }
+      return reply.code(404).send({ error: result.error });
+    }
+    return { ok: true, childId: result.childId, productId: result.productId, quantity: result.quantity };
   });
 
   // ── 家长：从孩子背包拿走一个道具（返还积分 + 填写理由） ────────────────
